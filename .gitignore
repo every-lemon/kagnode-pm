@@ -1,0 +1,13 @@
+/target/
+/dist/
+/.qa/
+/.venv/
+__pycache__/
+*.pyc
+.env
+*.sqlite*
+*.key
+*.pem
+/runtime/
+/downloads/
+
