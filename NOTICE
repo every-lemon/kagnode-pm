@@ -1,4 +1,4 @@
-KagNode Proxy Manager software is AGPL-3.0-only.
+KagNode. PM software is AGPL-3.0-only.
 
 The native installer protocol and reproducible source/package tooling were
 adapted from every-lemon/kagnode-cli, public commit

@@ -1,5 +1,5 @@
 {
-  "repository": "kagnode-proxy-manager",
+  "repository": "kagnode-pm",
   "version_file": "Cargo.toml",
   "version_pattern": "version = \"([^\"]+)\"",
   "kind": "native-rust",

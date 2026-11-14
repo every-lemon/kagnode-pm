@@ -195,7 +195,14 @@ def inspect(configuration, source):
         secret = protected(configuration.get("enrollment_token_file", ""), private=True)
         if len(secret.read_bytes().strip()) != 64:
             raise ValueError("Expected a one-time enrollment token")
+    from discover_config import discover
+
+    existing = discover(with_containers=False)
+    # Review digests bind source bytes/ownership, not the wall clock of a scan.
+    existing.pop("sampled", None)
     return {
+        "existing_configuration": existing,
+        "adoption": "Review detected configuration in PM. Installation does not adopt sites or replace traffic listeners.",
         "supported": supported,
         "platform": os_release.get("PRETTY_NAME"),
         "architecture": platform.machine(),
@@ -245,6 +252,21 @@ def initialize(configuration, source):
         raise ValueError(
             "Already installed; use status/recovery or a reviewed update, not setup"
         )
+    # Reject partial/legacy state before creating users or replacing executables.
+    for folder in (BASE / "controller", BASE / "agent", EXEC):
+        if folder.is_symlink() or (
+            folder.exists() and (not folder.is_dir() or any(folder.iterdir()))
+        ):
+            raise ValueError(
+                "Existing runtime or executable files require reviewed adoption/recovery before setup"
+            )
+    for user in USERS:
+        try:
+            entry = pwd.getpwnam(user)
+        except KeyError:
+            continue
+        if entry.pw_uid == 0 or entry.pw_shell != "/usr/sbin/nologin":
+            raise ValueError("Service identity has unexpected privileges")
     BASE.mkdir(parents=True, exist_ok=True)
     protected(BASE)
     CONFIG.mkdir(parents=True, exist_ok=True)
@@ -272,8 +294,18 @@ def initialize(configuration, source):
             raise ValueError("Service identity has unexpected privileges")
     binary = (source / "bin/kagnode-proxy-manager").read_bytes()
     atomic(EXEC / "kagnode-proxy-manager", binary, 0o755)
-    for filename in ("package_transaction.py", "local_credentials.py"):
+    for filename in (
+        "package_transaction.py",
+        "discover_config.py",
+        "local_credentials.py",
+    ):
         atomic(EXEC / filename, (source / "scripts" / filename).read_bytes(), 0o644)
+    alias = EXEC / "kagnode-pm"
+    if alias.exists() or alias.is_symlink():
+        if not alias.is_symlink() or os.readlink(alias) != "kagnode-proxy-manager":
+            raise ValueError("Existing PM command alias requires review")
+    else:
+        alias.symlink_to("kagnode-proxy-manager")
     for directory, user in (("controller", USERS[0]), ("agent", USERS[1])):
         path = BASE / directory
         if path.exists() and any(path.iterdir()):

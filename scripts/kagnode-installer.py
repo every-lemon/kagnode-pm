@@ -18,7 +18,114 @@ def plan(request):
         raise ValueError(
             "Proxy Manager requires reviewed native setup; live adoption uses the separate migration procedure"
         )
-    state = native.inspect(request.get("configuration", {}), SOURCE)
+    fields = [
+        {
+            "key": "role",
+            "label": "Role: controller, agent or combined",
+            "type": "string",
+            "required": True,
+            "default": "combined",
+        },
+        {
+            "key": "public_url",
+            "label": "Management HTTPS origin (controller/combined)",
+            "type": "string",
+            "required": False,
+        },
+        {
+            "key": "fleet_url",
+            "label": "Fleet HTTPS origin (controller/combined)",
+            "type": "string",
+            "required": False,
+        },
+        {
+            "key": "email",
+            "label": "Initial owner email (controller/combined)",
+            "type": "string",
+            "required": False,
+        },
+        {
+            "key": "name",
+            "label": "Initial owner name (controller/combined)",
+            "type": "string",
+            "required": False,
+        },
+        {
+            "key": "password_file",
+            "label": "Owner password file (controller/combined)",
+            "type": "string",
+            "required": False,
+            "secret": True,
+        },
+        {
+            "key": "controller",
+            "label": "Controller HTTPS origin (agent)",
+            "type": "string",
+            "required": False,
+        },
+        {
+            "key": "enrollment_token_file",
+            "label": "Enrollment token file (agent)",
+            "type": "string",
+            "required": False,
+            "secret": True,
+        },
+        {
+            "key": "ca_file",
+            "label": "Verified fleet CA file (agent)",
+            "type": "string",
+            "required": False,
+            "secret": True,
+        },
+        {
+            "key": "ca_sha256",
+            "label": "Fleet CA SHA256 (agent)",
+            "type": "string",
+            "required": False,
+        },
+        {
+            "key": "management_bind",
+            "label": "Management bind",
+            "type": "string",
+            "required": False,
+            "default": "127.0.0.1:9443",
+        },
+        {
+            "key": "fleet_bind",
+            "label": "Fleet bind",
+            "type": "string",
+            "required": False,
+            "default": "0.0.0.0:9444",
+        },
+        {
+            "key": "behind_proxy",
+            "label": "Existing HTTPS management frontend (true/false)",
+            "type": "boolean",
+            "required": False,
+            "default": False,
+        },
+        {
+            "key": "package_removal",
+            "label": "Enable guarded package removal (true/false)",
+            "type": "boolean",
+            "required": False,
+            "default": False,
+        },
+    ]
+    if not request.get("configuration"):
+        system = native.platform.freedesktop_os_release()
+        state = {
+            "supported": (system.get("ID"), system.get("VERSION_ID"))
+            in (("ubuntu", "24.04"), ("debian", "13"))
+            and native.platform.machine() in ("x86_64", "aarch64"),
+            "ready_for_apply": False,
+            "configuration": {},
+            "manual_steps": ["Complete role-specific configuration before review"],
+            "configuration_fields": fields,
+        }
+    else:
+        state = native.inspect(request.get("configuration", {}), SOURCE)
+        state["configuration_fields"] = fields
     value = {
         "schema": 1,
         "project": "proxy-manager",
@@ -47,10 +154,12 @@ def main():
         protocol.reviewed_plan(request, plan(request))
         result = native.initialize(request.get("configuration", {}), SOURCE)
         result["health"] = native.health()
+        result["health"]["ok"] = result["health"]["healthy"]
         if not result["health"]["healthy"]:
             result.update(completed=False, state="needs_recovery")
     elif args.action in ("status", "health"):
-        result = native.health()
+        status = native.health()
+        result = {**status, "health": {**status, "ok": status.get("healthy", False)}}
     else:
         result = {
             "completed": False,

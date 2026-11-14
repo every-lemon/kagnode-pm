@@ -37,6 +37,16 @@ async def journey(browser, origin, password, width):
         else None,
     )
     await page.goto(origin + "/login")
+    assert await page.locator(".kn-core-login-card").count() == 1
+    assert await page.locator(".sidebar,.topbar,footer").count() == 0
+    await page.wait_for_function(
+        "() => getComputedStyle(document.querySelector('.kn-core-login-card')).opacity === '1'"
+    )
+    assert await page.evaluate("getComputedStyle(document.body).margin === '0px'")
+    artifacts = os.environ.get("KAGNODE_QA_ARTIFACTS")
+    if artifacts and width in (390, 1440):
+        Path(artifacts).mkdir(parents=True, exist_ok=True)
+        await page.screenshot(path=str(Path(artifacts) / f"pm-login-{width}.png"))
     await page.locator("input[name=email]").fill("owner@fixture.invalid")
     continue_button = page.get_by_role("button", name="Continue", exact=True)
     if await continue_button.count():
@@ -79,6 +89,9 @@ async def journey(browser, origin, password, width):
                 "document.querySelector('.workspace').getBoundingClientRect().left >= document.querySelector('.sidebar').getBoundingClientRect().width - 1"
             )
     else:
+        assert await page.evaluate(
+            "document.querySelector('.topbar > div').getBoundingClientRect().left >= document.querySelector('.kn-core-mobile-toggle').getBoundingClientRect().right + 8"
+        )
         await page.get_by_role("button", name="Open navigation", exact=True).click()
         await page.keyboard.press("Escape")
         await page.wait_for_function("document.querySelector('.sidebar').inert")
@@ -92,6 +105,8 @@ async def journey(browser, origin, password, width):
         "jobs",
         "audit",
         "account",
+        "discovery",
+        "search",
     ]:
         await page.goto(origin + "/" + route)
         await page.wait_for_function(
@@ -101,6 +116,20 @@ async def journey(browser, origin, password, width):
         assert await page.evaluate(
             "() => document.documentElement.scrollWidth <= innerWidth + 1"
         ), route
+    await page.goto(origin + "/certificates")
+    await page.get_by_role("button", name="Upload certificate", exact=True).click()
+    assert await page.locator("dialog[open] input[name=private_ca]").count() == 1
+    assert await page.evaluate(
+        "() => document.documentElement.scrollWidth <= innerWidth + 1"
+    )
+    await page.keyboard.press("Escape")
+    await page.goto(origin + "/")
+    await page.keyboard.press("Control+k")
+    await page.locator("#command-palette").wait_for(state="visible")
+    assert await page.locator("#command-palette .kn-core-search-row").count() > 0
+    await page.keyboard.press("Escape")
+    if artifacts and width in (390, 1440):
+        await page.screenshot(path=str(Path(artifacts) / f"pm-overview-{width}.png"))
     await page.goto(origin + "/reverse-proxies")
     await page.get_by_role("button", name="Add proxy", exact=True).click()
     dialog = page.locator("dialog[open]")
@@ -142,7 +171,10 @@ async def journey(browser, origin, password, width):
         "width": width,
         "passed": True,
         "actual_login": True,
-        "routes": 10,
+        "routes": 12,
+        "core_login": True,
+        "quick_search": True,
+        "certificate_upload_dialog": True,
         "draft_create": True,
         "stale_revision": 409,
         "csrf_rejected": True,

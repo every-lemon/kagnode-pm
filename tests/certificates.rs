@@ -9,11 +9,12 @@ fn certificate_requests_are_structured_and_never_shell_hooks() {
             credential: "zone-limited".into(),
         },
         staging: true,
+        authority: "letsencrypt".into(),
     };
     let args = request
         .arguments(std::path::Path::new("/srv/kagnode/proxy-manager/traffic"))
         .unwrap();
-    assert!(args.contains(&"--staging".into()));
+    assert!(args.iter().any(|v| v.contains("acme-staging-v02")));
     assert!(args.contains(&"--dns-cloudflare".into()));
     assert!(
         !args
@@ -57,4 +58,80 @@ fn dns_credentials_require_exact_fields_and_keep_secrets_out_of_arguments() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn uploaded_private_keys_are_encrypted_and_bound_to_server() {
+    let root = tempfile::tempdir().unwrap();
+    let input = serde_json::json!({"private_key":"fictional-sensitive-fixture"});
+    let protected =
+        kagnode_proxy_manager::certificates::sealed(root.path(), "server-a", &input).unwrap();
+    assert!(
+        !protected
+            .to_string()
+            .contains("fictional-sensitive-fixture")
+    );
+    assert_eq!(
+        kagnode_proxy_manager::certificates::unseal(root.path(), "server-a", &protected).unwrap(),
+        input
+    );
+    assert!(
+        kagnode_proxy_manager::certificates::unseal(root.path(), "server-b", &protected).is_err()
+    );
+    let mut tampered = protected;
+    tampered["nonce"] = serde_json::json!("11".repeat(12));
+    assert!(
+        kagnode_proxy_manager::certificates::unseal(root.path(), "server-a", &tampered).is_err()
+    );
+}
+
+#[tokio::test]
+async fn uploaded_certificate_checks_key_hostname_and_trust_before_selection() {
+    use kagnode_proxy_manager::{certificates, tls};
+    let dir = tempfile::tempdir().unwrap();
+    let cert = dir.path().join("fixture.pem");
+    let key = dir.path().join("fixture.key");
+    tls::command(
+        "/usr/bin/openssl",
+        &[
+            "req",
+            "-x509",
+            "-newkey",
+            "ec",
+            "-pkeyopt",
+            "ec_paramgen_curve:P-256",
+            "-nodes",
+            "-days",
+            "1",
+            "-subj",
+            "/CN=fixture.example.com",
+            "-addext",
+            "subjectAltName=DNS:fixture.example.com",
+            "-keyout",
+            key.to_str().unwrap(),
+            "-out",
+            cert.to_str().unwrap(),
+        ],
+    )
+    .await
+    .unwrap();
+    let input = certificates::Upload {
+        id: "fixture".into(),
+        domains: vec!["fixture.example.com".into()],
+        certificate: std::fs::read_to_string(&cert).unwrap(),
+        private_key: std::fs::read_to_string(&key).unwrap(),
+        intermediate_chain: String::new(),
+        private_ca: true,
+    };
+    let mut bad = input.clone();
+    bad.domains = vec!["other.example.com".into()];
+    assert!(certificates::upload(dir.path(), bad).await.is_err());
+    assert!(!dir.path().join("certificates/fixture").exists());
+    let mut public = input.clone();
+    public.private_ca = false;
+    assert!(certificates::upload(dir.path(), public).await.is_err());
+    let result = certificates::upload(dir.path(), input).await.unwrap();
+    assert_eq!(result["state"], "validated");
+    assert_eq!(result["renewal"], "manual");
+    assert_eq!(result["traffic_reloaded"], false);
 }

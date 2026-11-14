@@ -382,3 +382,149 @@ async fn recovery_needs_fresh_node_proof_and_never_replays_the_mutation() {
         .unwrap();
     assert_eq!(audits, 1);
 }
+
+#[tokio::test]
+async fn discovery_uploads_and_engine_preview_are_permission_checked() {
+    let (_dir, app, token, csrf) = fixture();
+    app.store
+        .db
+        .lock()
+        .unwrap()
+        .execute("INSERT INTO servers(id,name) VALUES('node','Node')", [])
+        .unwrap();
+    assert_eq!(
+        call(&app, "GET", "/api/v1/engines", "", "", json!({}))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/servers/node/discovery",
+        &token,
+        "wrong",
+        json!({"request_key":"discovery-review-key"}),
+    )
+    .await;
+    assert!(!status.is_success());
+    let (status, data) = call(
+        &app,
+        "POST",
+        "/api/v1/servers/node/discovery",
+        &token,
+        &csrf,
+        json!({"request_key":"discovery-review-key"}),
+    )
+    .await;
+    assert!(status.is_success());
+    assert_eq!(data["read_only"], true);
+    let (status, report) = call(
+        &app,
+        "POST",
+        "/api/v1/servers/node/engine-plan",
+        &token,
+        &csrf,
+        json!({"engine":"caddy"}),
+    )
+    .await;
+    assert!(status.is_success());
+    assert_eq!(report["activation_qualified"], false);
+    let upload = json!({"upload":{"id":"uploaded","domains":["example.com"],"certificate":"-----BEGIN CERTIFICATE-----\nfictional fixture","private_key":"-----BEGIN PRIVATE KEY-----\nfictional-sensitive-fixture"},"request_key":"sensitive-upload-test"});
+    let (status, first) = call(
+        &app,
+        "POST",
+        "/api/v1/servers/node/certificates/upload",
+        &token,
+        &csrf,
+        upload.clone(),
+    )
+    .await;
+    assert!(status.is_success(), "{first}");
+    let (_, second) = call(
+        &app,
+        "POST",
+        "/api/v1/servers/node/certificates/upload",
+        &token,
+        &csrf,
+        upload,
+    )
+    .await;
+    assert_eq!(first["job"], second["job"]);
+    let stored: String = app
+        .store
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT payload FROM jobs WHERE kind='certificate_upload'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(!stored.contains("fictional-sensitive-fixture"));
+    assert!(stored.contains("sealed"));
+}
+
+#[tokio::test]
+async fn quick_search_excludes_inaccessible_servers_and_removed_resources() {
+    let (_dir, app, owner, owner_csrf) = fixture();
+    app.store.db.lock().unwrap().execute_batch("INSERT INTO servers(id,name) VALUES('visible','Visible server'),('private','Private server');").unwrap();
+    let viewer = proxy::auth::create_user(
+        &app.store,
+        "viewer@example.com",
+        "Viewer",
+        "Another fictional password!",
+        Role::Viewer,
+    )
+    .unwrap();
+    app.store
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "INSERT INTO server_permissions VALUES(?,'visible','viewer',0)",
+            [&viewer],
+        )
+        .unwrap();
+    let (token, user) = proxy::auth::new_session(&app.store, &viewer).unwrap();
+    let resource:proxy::domain::Resource=serde_json::from_value(json!({"kind":"proxy_host","settings":{"domains":["fixture.example.com"],"upstreams":[{"address":"http://127.0.0.1:8080"}]}})).unwrap();
+    app.store
+        .save_resource("fixture", "visible", "visible-site", &resource, None, 0)
+        .unwrap();
+    app.store
+        .save_resource("fixture", "private", "private-site", &resource, None, 0)
+        .unwrap();
+    let (status, result) = call(
+        &app,
+        "GET",
+        "/api/v1/search?q=site",
+        &token,
+        &user.csrf,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(result.to_string().contains("visible-site"));
+    assert!(!result.to_string().contains("private-site"));
+    let (_, summary) = call(
+        &app,
+        "GET",
+        "/api/v1/overview",
+        &token,
+        &user.csrf,
+        json!({}),
+    )
+    .await;
+    assert_eq!(summary["draft_changes"], 1);
+    let (_, all) = call(
+        &app,
+        "GET",
+        "/api/v1/search?q=site",
+        &owner,
+        &owner_csrf,
+        json!({}),
+    )
+    .await;
+    assert!(all.to_string().contains("private-site"));
+}
