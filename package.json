@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/build_web.mjs",
+    "check:web": "node scripts/build_web.mjs --check && node --check web/app.js",
+    "format:check": "prettier --check web/app.js web/app.css scripts/*.mjs package.json README.md CHANGELOG.md SECURITY.md docs .github/workflows"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "prettier": "3.7.4"
+  }
+}

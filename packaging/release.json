@@ -1,0 +1,10 @@
+{
+  "repository": "kagnode-proxy-manager",
+  "version_file": "Cargo.toml",
+  "version_pattern": "version = \"([^\"]+)\"",
+  "kind": "native-rust",
+  "license": "AGPL-3.0-only",
+  "revision": 1,
+  "channel": "stable",
+  "native_publication": "Blocked until docs/DELIVERY.md qualification gates pass"
+}

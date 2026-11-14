@@ -1,0 +1,424 @@
+#!/usr/bin/env python3
+"""Reproducible, allowlisted KagNode Proxy Manager source/data packages. Native binaries are supplied by checked architecture builds."""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import io
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shutil
+import subprocess
+import tarfile
+import tempfile
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def config():
+    return json.loads((ROOT / "packaging/release.json").read_text())
+
+
+def identity():
+    cfg = config()
+    source = (ROOT / cfg["version_file"]).read_text()
+    version = re.search(cfg["version_pattern"], source).group(1)
+    release = (
+        version
+        if cfg.get("channel") == "stable"
+        else (
+            version
+            + ("." if "-" in version else "-")
+            + "packaging."
+            + str(cfg["revision"])
+        )
+    )
+    if cfg.get("channel") == "stable" and not re.fullmatch(
+        r"[0-9]+\.[0-9]+\.[0-9]+", version
+    ):
+        raise ValueError("Stable releases require a final product version")
+    return cfg, version, release
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def source_files():
+    names = json.loads((ROOT / "packaging/source-files.json").read_text())
+    if names != sorted(set(names)):
+        raise ValueError("Source allowlist must be sorted and unique")
+    files = []
+    for name in names:
+        rel = PurePosixPath(name)
+        if rel.is_absolute() or ".." in rel.parts or str(rel) != name:
+            raise ValueError("Unsafe source path: " + name)
+        if any(
+            part
+            in {".git", ".venv", "node_modules", "__pycache__", "private", "runtime"}
+            for part in rel.parts
+        ):
+            raise ValueError("Private/generated path in source allowlist: " + name)
+        path = ROOT / name
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or not path.resolve().is_relative_to(ROOT.resolve())
+            or any(parent.is_symlink() for parent in path.parents if parent != ROOT)
+        ):
+            raise ValueError("Expected a regular source file: " + name)
+        raw = path.read_bytes()
+        if re.search(rb"^-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----\s*$", raw, re.M):
+            raise ValueError("Private key in source: " + name)
+        if path.suffix in {".sqlite", ".sqlite3", ".db", ".qcow2"} or name.startswith(
+            ".env"
+        ):
+            raise ValueError("Runtime data in source: " + name)
+        files.append((name, path))
+    return files
+
+
+def source_mode(path):
+    return 0o755 if path.stat().st_mode & 0o111 else 0o644
+
+
+def archives(files, prefix, out, epoch):
+    """All formats use identical logical contents, with no links or host metadata."""
+    tar = io.BytesIO()
+    with tarfile.open(fileobj=tar, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        for name, path in sorted(files):
+            raw = path.read_bytes()
+            member = tarfile.TarInfo(prefix + "/" + name)
+            member.size, member.mode, member.mtime = len(raw), source_mode(path), epoch
+            member.uid = member.gid = 0
+            member.uname = member.gname = "root"
+            archive.addfile(member, io.BytesIO(raw))
+    import lzma
+
+    (out / (prefix + ".tar.xz")).write_bytes(lzma.compress(tar.getvalue(), preset=6))
+    with (out / (prefix + ".tar.gz")).open("wb") as dest:
+        with gzip.GzipFile(fileobj=dest, mode="wb", filename="", mtime=epoch) as stream:
+            stream.write(tar.getvalue())
+    with zipfile.ZipFile(
+        out / (prefix + ".zip"), "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as archive:
+        import time
+
+        date = time.gmtime(max(epoch, 315532800))[:6]
+        for name, path in sorted(files):
+            entry = zipfile.ZipInfo(prefix + "/" + name, date)
+            entry.create_system = 3
+            entry.external_attr = (0o100000 | source_mode(path)) << 16
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(entry, path.read_bytes())
+
+
+def system_packages(files, package, version, out, epoch, arch="all", binary=False):
+    debversion = version.replace("-", "~", 1)
+    with tempfile.TemporaryDirectory(prefix="kagnode-package-") as temporary:
+        temp = Path(temporary)
+        root = temp / "root"
+        root.mkdir()
+        if binary:
+            target = root / "usr/bin"
+            target.mkdir(parents=True)
+            shutil.copyfile(dict(files)["kagnode"], target / "kagnode")
+            (target / "kagnode").chmod(0o755)
+            docs = root / "usr/share/doc" / package
+            docs.mkdir(parents=True)
+            for name, path in files:
+                if name != "kagnode":
+                    dest = docs / name
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(path, dest)
+        else:
+            target = root / "usr/share/kagnode" / package
+            for name, path in files:
+                dest = target / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, dest)
+                dest.chmod(source_mode(path))
+        # No maintainer script, daemon activation, networking or user-data removal.
+        debian = root / "DEBIAN"
+        debian.mkdir()
+        (debian / "control").write_text(
+            f"Package: {package}\nVersion: {debversion}\nArchitecture: {arch}\n"
+            "Maintainer: KagNode contributors <every-lemon@users.noreply.github.com>\n"
+            "Section: misc\nPriority: optional\n"
+            + ("Recommends: python3 (>= 3.10)\n" if binary else "")
+            + f"Description: KagNode {package} {'CLI application' if binary else 'source distribution'}\n"
+            " Source/data packages do not provision native services.\n"
+        )
+        for path in [root, *root.rglob("*")]:
+            if path.is_dir():
+                path.chmod(0o755)
+            os.utime(path, (epoch, epoch))
+        env = {**os.environ, "SOURCE_DATE_EPOCH": str(epoch)}
+        deb = out / f"{package}_{version}_{arch}.deb"
+        subprocess.run(
+            [
+                "dpkg-deb",
+                "--threads-max=1",
+                "--root-owner-group",
+                "-Zxz",
+                "--build",
+                str(root),
+                str(deb),
+            ],
+            check=True,
+            env=env,
+        )
+        shutil.rmtree(debian)
+        specroot = temp / "rpm"
+        for directory in ["SPECS", "BUILD", "BUILDROOT", "RPMS", "SOURCES", "SRPMS"]:
+            (specroot / directory).mkdir(parents=True)
+        rpmarch = {"all": "noarch", "amd64": "x86_64", "arm64": "aarch64"}[arch]
+        base, separator, prerelease = version.partition("-")
+        rpmversion = base + "~" + prerelease if separator else base
+        license_id = config()["license"]
+        rcfile = temp / "rpmrc"
+        rcfile.write_text(
+            "buildarch_compat: " + os.uname().machine + ": x86_64 aarch64 noarch\n"
+        )
+        rpmconfig = subprocess.check_output(
+            ["rpm", "--eval", "%{_rpmconfigdir}"], text=True
+        ).strip()
+        spec = specroot / "SPECS/package.spec"
+        owned = (
+            f"/usr/bin/kagnode\n/usr/share/doc/{package}"
+            if binary
+            else f"/usr/share/kagnode/{package}"
+        )
+        spec.write_text(f"""Name: {package}
+Version: {rpmversion}
+Release: 1
+Summary: KagNode Proxy Manager source distribution
+License: {license_id}
+URL: https://github.com/every-lemon/{config()["repository"]}
+BuildArch: {rpmarch}
+AutoReqProv: no
+{"Recommends: python3 >= 3.10" if binary else ""}
+%global debug_package %{{nil}}
+%global __os_install_post %{{nil}}
+%global _build_id_links none
+%global clamp_mtime_to_source_date_epoch 1
+%global use_source_date_epoch_as_buildtime 1
+%description
+KagNode Proxy Manager source payload. Native provisioning is disabled in RPMs.
+Native service provisioning is not performed or qualified by this RPM.
+%prep
+%build
+%install
+mkdir -p %{{buildroot}}
+cp -a {root}/. %{{buildroot}}/
+%files
+{owned}
+""")
+        subprocess.run(
+            [
+                "rpmbuild",
+                "--rcfile",
+                rpmconfig + "/rpmrc:" + str(rcfile),
+                "-bb",
+                "--target",
+                rpmarch,
+                "--define",
+                "_topdir " + str(specroot),
+                "--define",
+                "_buildhost build.kagnode.invalid",
+                str(spec),
+            ],
+            check=True,
+            env=env,
+            stdout=subprocess.DEVNULL,
+        )
+        rpms = list((specroot / "RPMS").rglob("*.rpm"))
+        if len(rpms) != 1:
+            raise ValueError("Expected exactly one RPM")
+        shutil.copyfile(rpms[0], out / f"{package}_{version}_{arch}.rpm")
+
+
+def application_packages(source, binary, arch, version, out, epoch):
+    """Package a checked native build; never execute it or provision this host."""
+    if binary.is_symlink():
+        raise ValueError("Native build must not be a symlink")
+    binary = binary.resolve()
+    info = binary.stat()
+    if (
+        not binary.is_file()
+        or binary.is_symlink()
+        or not 0 < info.st_size < 64 * 1024 * 1024
+    ):
+        raise ValueError("Invalid bounded native binary")
+    header = binary.read_bytes()[:20]
+    if (
+        header[:6] != b"\x7fELF\x02\x01"
+        or int.from_bytes(header[18:20], "little") != {"amd64": 62, "arm64": 183}[arch]
+    ):
+        raise ValueError("Native ELF architecture does not match its package")
+    with tempfile.TemporaryDirectory(prefix="kagnode-proxy-native-") as directory:
+        stage = Path(directory)
+        program = stage / "kagnode-proxy-manager"
+        shutil.copyfile(binary, program)
+        program.chmod(0o755)
+        payload = [
+            *source,
+            ("bin/kagnode-proxy-manager", program),
+            (
+                "bin/libexec/package_transaction.py",
+                ROOT / "scripts/package_transaction.py",
+            ),
+        ]
+        archives(payload, f"kagnode-proxy-manager_{version}_linux_{arch}", out, epoch)
+        root = stage / "deb"
+        base = root / "usr/lib/kagnode-proxy-manager"
+        for name, path in payload:
+            target = base / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, target)
+            target.chmod(source_mode(path))
+        links = root / "usr/bin"
+        links.mkdir(parents=True)
+        (links / "kagnode-proxy-manager").symlink_to(
+            "../lib/kagnode-proxy-manager/bin/kagnode-proxy-manager"
+        )
+        metadata = root / "DEBIAN"
+        metadata.mkdir()
+        (metadata / "control").write_text(
+            f"Package: kagnode-proxy-manager\nVersion: {version}\nArchitecture: {arch}\nMaintainer: KagNode contributors <every-lemon@users.noreply.github.com>\nSection: admin\nPriority: optional\nDepends: libc6 (>= 2.39), libgcc-s1, ca-certificates, openssl, python3 (>= 3.11), python3-apt\nRecommends: nginx, libnginx-mod-stream, certbot\nDescription: KagNode Proxy Manager native controller, agent and setup tools\n Native setup is an explicit reviewed operation. Installing, upgrading or\n removing this package never changes existing instances or user data.\n"
+        )
+        for path in [root, *root.rglob("*")]:
+            if path.is_dir():
+                path.chmod(0o755)
+            os.utime(path, (epoch, epoch), follow_symlinks=False)
+        subprocess.run(
+            [
+                "dpkg-deb",
+                "--threads-max=1",
+                "--root-owner-group",
+                "-Zxz",
+                "--build",
+                str(root),
+                str(out / f"kagnode-proxy-manager_{version}_{arch}.deb"),
+            ],
+            env={**os.environ, "SOURCE_DATE_EPOCH": str(epoch)},
+            check=True,
+        )
+
+
+def build(out, binaries=None):
+    if subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        cwd=ROOT,
+        text=True,
+    ).strip():
+        raise ValueError(
+            "Release builds require a clean committed source tree; commit reviewed changes before creating provenance"
+        )
+    source_revision = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+    cfg, product, version = identity()
+    out = out.resolve()
+    if out.exists() and any(out.iterdir()):
+        raise ValueError(
+            "Use an empty output directory; old release artifacts are retained"
+        )
+    out.mkdir(parents=True, exist_ok=True)
+    epoch = int(
+        os.environ.get(
+            "SOURCE_DATE_EPOCH",
+            subprocess.check_output(
+                ["git", "log", "-1", "--format=%ct"], cwd=ROOT, text=True
+            ).strip(),
+        )
+    )
+    files = source_files()
+    input_hashes = {name: digest(path) for name, path in files}
+    prefix = f"{cfg['repository']}_{version}_source"
+    archives(files, prefix, out, epoch)
+    package = (
+        cfg["repository"] if cfg["kind"] == "artwork" else cfg["repository"] + "-source"
+    )
+    system_packages(files, package, version, out, epoch)
+    for arch, binary in (binaries or {}).items():
+        application_packages(files, binary, arch, version, out, epoch)
+    assets = {
+        p.name: {"sha256": digest(p), "size": p.stat().st_size}
+        for p in sorted(out.iterdir())
+        if p.is_file()
+    }
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+    changed = subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        cwd=ROOT,
+        text=True,
+    ).strip()
+    if (
+        changed
+        or head != source_revision
+        or any(digest(path) != input_hashes[name] for name, path in files)
+    ):
+        raise ValueError(
+            "Source changed during the build; partial outputs are not a release and no manifest was published"
+        )
+    manifest = {
+        "schema": 1,
+        "repository": "every-lemon/" + cfg["repository"],
+        "version": version,
+        "product_version": product,
+        "source_commit": head,
+        "epoch": epoch,
+        "channel": cfg.get("channel", "preview"),
+        "rpm_status": "Rocky Linux 10 source/data preview only; native provisioning is disabled",
+        "native_publication": cfg["native_publication"],
+        "assets": assets,
+    }
+    (out / "release-manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
+    (out / "SHA256SUMS").write_text(
+        "".join(
+            f"{digest(p)}  {p.name}\n" for p in sorted(out.iterdir()) if p.is_file()
+        )
+    )
+    print(json.dumps({"version": version, "output": str(out), "files": len(assets)}))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "dist/packages")
+    parser.add_argument("--identity", action="store_true")
+    parser.add_argument("--binary-amd64", type=Path)
+    parser.add_argument("--binary-arm64", type=Path)
+    args = parser.parse_args()
+    if args.identity:
+        cfg, product, version = identity()
+        print(
+            json.dumps(
+                {
+                    "repository": cfg["repository"],
+                    "product": product,
+                    "version": version,
+                }
+            )
+        )
+    else:
+        build(
+            args.output,
+            {
+                arch: path
+                for arch, path in [
+                    ("amd64", args.binary_amd64),
+                    ("arm64", args.binary_arm64),
+                ]
+                if path is not None
+            },
+        )

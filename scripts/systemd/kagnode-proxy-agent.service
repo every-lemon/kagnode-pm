@@ -1,0 +1,29 @@
+[Unit]
+Description=KagNode Proxy Manager outbound agent
+Wants=network-online.target kagnode-proxy-broker.socket
+After=network-online.target kagnode-proxy-broker.socket
+
+[Service]
+User=kn-proxy-agent
+Group=kn-proxy-agent
+ExecStart=@EXEC@/kagnode-proxy-manager agent --root @BASE@/agent
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=@BASE@/agent
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryHigh=32M
+MemoryMax=64M
+TasksMax=64
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

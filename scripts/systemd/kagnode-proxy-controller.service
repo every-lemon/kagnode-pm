@@ -1,0 +1,28 @@
+[Unit]
+Description=KagNode Proxy Manager controller
+After=network.target
+
+[Service]
+User=kn-proxy-controller
+Group=kn-proxy-controller
+ExecStart=@EXEC@/kagnode-proxy-manager serve --root @BASE@/controller --bind @MANAGEMENT_BIND@ --fleet-bind @FLEET_BIND@ @PROXY_FLAG@
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=@BASE@/controller
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryHigh=64M
+MemoryMax=96M
+TasksMax=128
+LimitNOFILE=2048
+
+[Install]
+WantedBy=multi-user.target
