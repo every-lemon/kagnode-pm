@@ -16,7 +16,7 @@ The repository distinguishes implemented functions from verification still requi
 
 - Typed reverse-host, upstream, TCP/UDP and forward-proxy configuration.
 - Multi-server enrollment, mutual TLS identities, revocation and durable jobs.
-- Local accounts, server permissions, revision checks and audit records.
+- Local accounts, MFA/recovery codes, node permissions, revision checks and audit records.
 - KagNode Core presentation, served locally with an embedded fallback.
 - Dependency-aware package-removal previews and a restricted local execution helper.
 - Read-only import previews for the previous Nginx manager.
@@ -25,17 +25,17 @@ Full capability and native-qualification status is recorded in the delivery chec
 
 ## Requirements
 
-Target systems: Ubuntu 24.04 or Debian 13, Linux amd64/arm64 with systemd. Nginx handles reverse traffic; forward listeners additionally require a qualified 3proxy build. Package inspection/transactions use distribution `python3-apt` transiently. Development requires Rust 1.88+, a C compiler and OpenSSL.
+Target systems: Ubuntu 24.04 or Debian 13, Linux amd64/arm64 with systemd. Nginx handles reverse traffic; forward listeners additionally require a qualified 3proxy build. Package inspection/transactions use distribution `python3-apt` transiently. Development requires Rust 1.88+, a C compiler and OpenSSL. Node.js 24 is used only when regenerating web assets; it is not a server runtime dependency.
 
 ## Installation and downloads
 
 Release formats are planned as application `.deb`, `.tar.xz`, `.tar.gz` and `.zip`, plus corresponding source archives. RPM is source/data only; Rocky Linux native operation is outside the supported platform matrix.
 
-| Platform | Architecture | Application/native status |
-| --- | --- | --- |
-| Ubuntu 24.04 | amd64 / arm64 | Qualification pending |
-| Debian 13 | amd64 / arm64 | Qualification pending |
-| Rocky Linux | noarch source/data RPM | No native support claim |
+| Platform     | Architecture           | Application/native status |
+| ------------ | ---------------------- | ------------------------- |
+| Ubuntu 24.04 | amd64 / arm64          | Qualification pending     |
+| Debian 13    | amd64 / arm64          | Qualification pending     |
+| Rocky Linux  | noarch source/data RPM | No native support claim   |
 
 ## Usage
 
@@ -47,7 +47,7 @@ New managed installations use `/srv/kagnode/proxy-manager/`. Controller and agen
 
 ## Security
 
-Read [SECURITY.md](SECURITY.md). The web process cannot issue arbitrary shell commands. Package operations require a host capability and recent administrator authentication; protected or unverified removal plans are blocked. Root administrators outside this application remain responsible for their hosts.
+Read [SECURITY.md](SECURITY.md). The web process cannot issue arbitrary shell commands. Package operations require a host capability and recent authentication and a host-maintenance grant; protected or unverified removal plans are blocked. Root administrators outside this application remain responsible for their hosts.
 
 ## Development and testing
 
@@ -61,6 +61,7 @@ Native package removal and proxy activation are tested only in disposable system
 
 ## Documentation
 
+- [Native deployment and legacy migration](docs/MIGRATION.md)
 - [Delivery and verification checklist](docs/DELIVERY.md)
 - [Repository map](docs/STRUCTURE.md)
 - [Security policy](SECURITY.md)
@@ -69,4 +70,3 @@ Native package removal and proxy activation are tested only in disposable system
 ## Licensing
 
 Application source: **AGPL-3.0-only**. Retain third-party notices and their licenses. KagNode artwork has a separate permission policy in `vendor/core/ARTWORK-LICENSE.txt`. Nginx and 3proxy retain their upstream licenses.
-

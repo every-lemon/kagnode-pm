@@ -1,0 +1,13 @@
+KagNode Proxy Manager software is AGPL-3.0-only.
+
+The native installer protocol and reproducible source/package tooling were
+adapted from every-lemon/kagnode-cli, public commit
+ad9b54ef69fd5edfbbe97d4cdaf1abf9d1b7d16d. These files retain AGPL-3.0-only
+licensing. Project-owned proxy, authentication, certificate and maintenance
+rules are implemented in this repository.
+
+KagNode Core is vendored with its corresponding readable source, AGPL license,
+artwork permissions and upstream notices. Core provenance is in core.lock.json.
+Nginx, Certbot and the optional 3proxy engine are separate upstream projects;
+installing this application does not change their licenses or qualify their
+native operation on an unsupported platform.

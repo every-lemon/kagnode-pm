@@ -1,4 +1,6 @@
 /target/
+**/target/
+node_modules/
 /dist/
 /.qa/
 /.venv/
@@ -8,6 +10,7 @@ __pycache__/
 *.sqlite*
 *.key
 *.pem
+!vendor/**/release-public.pem
 /runtime/
 /downloads/
 

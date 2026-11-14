@@ -24,4 +24,3 @@ The target product is the user-approved multi-server Rust Proxy Manager, Ubuntu 
 - [ ] Controlled cutover, route health checks and rollback rehearsal pass.
 
 No production service, package, route, firewall, DNS or certificate has been changed by creating this source repository. This checklist records unfinished work explicitly; it is not a native qualification claim.
-

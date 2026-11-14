@@ -7,4 +7,3 @@ The controller and agents run under separate unprivileged identities. A host gra
 Public forward proxies require authentication, explicit client networks, destination policies and encrypted transport. TLS tunnelling does not intercept or decrypt destination HTTPS sessions. Plaintext SOCKS5 and UDP association must not be exposed publicly.
 
 Package deletion is not equivalent to configuration rollback. Package-maintainer scripts are distribution code and can affect services; disposable installation/removal qualification and transaction records are mandatory before claiming native support.
-

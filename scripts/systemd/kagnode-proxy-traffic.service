@@ -1,0 +1,32 @@
+[Unit]
+Description=KagNode Proxy Manager owned Nginx traffic generation
+After=network.target
+ConditionPathExists=@BASE@/traffic/current/nginx.conf
+
+[Service]
+Type=forking
+PIDFile=@BASE@/traffic/run/nginx.pid
+ExecStartPre=@EXEC@/kagnode-proxy-manager traffic-prepare --root @BASE@/traffic
+ExecStartPre=/usr/sbin/nginx -t -p @BASE@/traffic -c @BASE@/traffic/current/nginx.conf
+ExecStart=/usr/sbin/nginx -p @BASE@/traffic -c @BASE@/traffic/current/nginx.conf
+ExecReload=/usr/sbin/nginx -t -p @BASE@/traffic -c @BASE@/traffic/current/nginx.conf
+ExecReload=/usr/sbin/nginx -s reload -p @BASE@/traffic -c @BASE@/traffic/current/nginx.conf
+KillSignal=SIGQUIT
+TimeoutStopSec=35
+Restart=on-failure
+RestartSec=3
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=@BASE@/traffic
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryHigh=48M
+MemoryMax=96M
+TasksMax=128
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
