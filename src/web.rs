@@ -91,7 +91,12 @@ fn user(s: &App, h: &HeaderMap, write: bool) -> Api<User> {
     let u = auth::session(&s.store, h)?
         .ok_or_else(|| Error(StatusCode::UNAUTHORIZED, "Sign in to continue".into()))?;
     if write {
-        auth::csrf(&u, h, &s.origin)?;
+        auth::csrf(&u, h, &s.origin).map_err(|_| {
+            Error(
+                StatusCode::FORBIDDEN,
+                "This form expired or came from another origin. Reload before trying again.".into(),
+            )
+        })?;
     }
     Ok(u)
 }
@@ -156,6 +161,16 @@ pub fn router(state: App) -> Router {
             get(resources).post(save_resource),
         )
         .route("/api/v1/servers/{id}/publish", post(publish))
+        .route(
+            "/api/v1/servers/{id}/publication-review",
+            get(publication_review),
+        )
+        .route("/api/v1/resources/{id}/history", get(resource_history))
+        .route("/api/v1/resources/{id}/restore", post(restore_resource))
+        .route(
+            "/api/v1/servers/{id}/retired-resources",
+            get(retired_resources),
+        )
         .route(
             "/api/v1/servers/{id}/certificates/inspect",
             post(certificate_inventory),
@@ -664,6 +679,8 @@ struct Key {
 #[serde(deny_unknown_fields)]
 struct Publication {
     request_key: String,
+    #[serde(default)]
+    review_sha256: Option<String>,
     revisions: std::collections::BTreeMap<String, i64>,
 }
 async fn publish(
@@ -674,38 +691,92 @@ async fn publish(
 ) -> Api<Json<Value>> {
     let u = user(&s, &h, true)?;
     allowed(&s, &u, &id, true, false)?;
-    let resources = s.store.resources(&id)?;
-    let expected: std::collections::BTreeMap<_, _> = resources
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| {
-            (
-                r["id"].as_str().unwrap().to_string(),
-                r["revision"].as_i64().unwrap(),
-            )
-        })
-        .collect();
-    ensure!(
-        key.revisions == expected,
-        "conflict: server drafts changed; reload and review before publishing"
-    );
-    let payload: Vec<_> = resources
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| json!([r["name"], r["settings"]]))
-        .collect();
-    let job = s.store.enqueue(
+    let job = s.store.queue_publication(
         &u.id,
         &id,
-        "configure",
-        json!({"resources":payload,"revisions":resources}),
         &key.request_key,
+        &key.revisions,
+        key.review_sha256.as_deref(),
     )?;
-    s.store
-        .audit(&u.id, "configuration.queued", &id, json!({"job":job}))?;
     Ok(Json(json!({"job":job,"state":"queued"})))
+}
+async fn publication_review(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, false)?;
+    allowed(&s, &u, &id, false, false)?;
+    Ok(Json(s.store.publication_review(&id)?))
+}
+async fn resource_history(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, false)?;
+    let server: String = s
+        .store
+        .db
+        .lock()
+        .unwrap()
+        .query_row("SELECT server FROM resources WHERE id=?", [&id], |r| {
+            r.get(0)
+        })
+        .map_err(|_| anyhow::anyhow!("Resource unavailable"))?;
+    allowed(&s, &u, &server, false, false)?;
+    Ok(Json(s.store.resource_history(&id)?))
+}
+async fn retired_resources(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(server): Path<String>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, false)?;
+    allowed(&s, &u, &server, false, false)?;
+    let db = s.store.db.lock().unwrap();
+    let mut q=db.prepare("SELECT id,name,kind,settings,revision,published FROM resources WHERE server=? AND deleted=1 ORDER BY name LIMIT 200")?;
+    let rows=q.query_map([server],|r|Ok(json!({"id":r.get::<_,String>(0)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"settings":serde_json::from_str::<Value>(&r.get::<_,String>(3)?).unwrap_or(Value::Null),"revision":r.get::<_,i64>(4)?,"published":r.get::<_,i64>(5)?,"deleted":true})))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(Json(json!(rows)))
+}
+async fn restore_resource(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<Value>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    let server: String = s
+        .store
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT server FROM resources WHERE id=? AND deleted=1",
+            [&id],
+            |r| r.get(0),
+        )
+        .map_err(|_| anyhow::anyhow!("Retired resource unavailable"))?;
+    allowed(&s, &u, &server, true, false)?;
+    let revision = input["revision"]
+        .as_i64()
+        .ok_or_else(|| anyhow::anyhow!("Provide current revision"))?;
+    let mut db = s.store.db.lock().unwrap();
+    let tx = db.transaction()?;
+    ensure!(tx.execute("UPDATE resources SET deleted=0,revision=revision+1 WHERE id=? AND revision=? AND deleted=1",params![id,revision])?==1,"conflict: resource changed; reload before restoring");
+    tx.execute("INSERT INTO revisions(resource,revision,settings,actor,created)SELECT id,revision,settings,?,? FROM resources WHERE id=?",params![u.id,now(),id])?;
+    tx.execute(
+        "INSERT INTO audit(actor,action,target,detail,created)VALUES(?,?,?,?,?)",
+        params![
+            u.id,
+            "resource.restore",
+            id,
+            json!({"revision":revision+1}).to_string(),
+            now()
+        ],
+    )?;
+    tx.commit()?;
+    Ok(Json(json!({"id":id,"state":"draft","revision":revision+1})))
 }
 async fn remove_resource(
     State(s): State<App>,

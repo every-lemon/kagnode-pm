@@ -1,3 +1,12 @@
+# 5.0.2
+
+- Replace raw proxy editing with grouped routing, upstream, TLS, access and advanced controls; preserve weighted/backup peers and existing settings.
+- Add route/domain/upstream filtering, published/draft status, retired-route restoration and revision history.
+- Review added, changed and removed routes before publication; bind the UI review to an atomic frozen server snapshot, retain exact-request replay and block overlapping publications.
+- Show publication progress and distinguish confirmed activation from uncertain outcomes.
+- Reissue existing Let's Encrypt staging lineages when production is requested, and reject untrusted public-authority production chains before selecting them.
+- Return a clear forbidden response for expired/cross-origin CSRF forms.
+
 # 5.0.1
 
 - Rename the public repository to `every-lemon/kagnode-pm` and current product presentation to KagNode. PM, retaining installed service/data compatibility identifiers.

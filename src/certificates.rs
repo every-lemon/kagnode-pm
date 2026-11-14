@@ -158,6 +158,31 @@ impl Request {
                 ]);
             }
         }
+        // Certbot can reuse a valid staging lineage despite a production
+        // --server flag. Force one replacement only when promoting that lineage.
+        let renewal = root
+            .join("acme/config/renewal")
+            .join(format!("kn-{}.conf", self.id));
+        if !self.staging && self.authority == "letsencrypt" && renewal.exists() {
+            use std::os::unix::fs::MetadataExt;
+            let meta = renewal.symlink_metadata()?;
+            ensure!(
+                meta.is_file()
+                    && !meta.file_type().is_symlink()
+                    && meta.uid() == unsafe { libc::geteuid() }
+                    && meta.mode() & 0o022 == 0
+                    && meta.len() < 65536,
+                "Unsafe ACME renewal metadata"
+            );
+            if std::fs::read_to_string(renewal)?.lines().any(|l| {
+                l.split_once('=').is_some_and(|(k, v)| {
+                    k.trim() == "server"
+                        && v.trim() == "https://acme-staging-v02.api.letsencrypt.org/directory"
+                })
+            }) {
+                args.push("--force-renewal".into());
+            }
+        }
         match &self.provider {
             Provider::Http {} => args.extend([
                 "--webroot".into(),
@@ -223,8 +248,34 @@ pub async fn issue(root: &Path, request: Request) -> Result<Value> {
     let generated = root
         .join("acme/config/live")
         .join(format!("kn-{}", request.id));
+    if !request.staging && matches!(request.authority.as_str(), "letsencrypt" | "zerossl") {
+        validate_public_chain(&generated).await?;
+    }
     let leaf = std::fs::read(generated.join("fullchain.pem"))?;
     let key = std::fs::read(generated.join("privkey.pem"))?;
+    for domain in &request.domains {
+        let hostname = domain
+            .strip_prefix("*.")
+            .map(|base| format!("kagnode-wildcard-check.{base}"))
+            .unwrap_or_else(|| domain.clone());
+        let result = crate::tls::command(
+            "/usr/bin/openssl",
+            &[
+                "x509",
+                "-in",
+                generated.join("cert.pem").to_str().unwrap(),
+                "-noout",
+                "-checkhost",
+                &hostname,
+            ],
+        )
+        .await?;
+        ensure!(
+            String::from_utf8_lossy(&result).contains("does match certificate"),
+            "Issued certificate does not cover the requested hostname; no active certificate was replaced"
+        );
+    }
+
     validate_pair(&leaf, &key, root).await?;
     let version = crate::random();
     let dir = root
@@ -258,6 +309,30 @@ pub async fn issue(root: &Path, request: Request) -> Result<Value> {
     Ok(
         json!({"state":"issued","id":request.id,"version":version,"message":"Publish or reload the verified traffic generation to use this certificate"}),
     )
+}
+/// Public production authorities must chain to the system trust store.
+/// No staging or private chain may be selected as a production certificate.
+pub async fn validate_public_chain(generated: &Path) -> Result<()> {
+    crate::tls::command(
+        "/usr/bin/openssl",
+        &[
+            "verify",
+            "-purpose",
+            "sslserver",
+            "-CAfile",
+            "/etc/ssl/certs/ca-certificates.crt",
+            "-untrusted",
+            generated.join("chain.pem").to_str().unwrap(),
+            generated.join("cert.pem").to_str().unwrap(),
+        ],
+    )
+    .await
+    .map_err(|_| {
+        anyhow::anyhow!(
+            "Production certificate is not publicly trusted; no active certificate was replaced"
+        )
+    })?;
+    Ok(())
 }
 pub async fn validate_pair(cert: &[u8], key: &[u8], root: &Path) -> Result<()> {
     ensure!(

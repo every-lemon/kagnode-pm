@@ -1,5 +1,5 @@
 /** Generate fingerprinted production assets separately from editable source. */
-import { transform } from "esbuild";
+import { transform, build } from "esbuild";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdir, readdir, unlink } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,22 @@ for (const extension of ["js", "css"]) {
         "/* KagNode. PM · AGPL-3.0-only · github.com/every-lemon/kagnode-pm */",
     },
   );
+  if (extension === "js") {
+    const bundled = await build({
+      entryPoints: [path.join(root, "web/app.js")],
+      bundle: true,
+      write: false,
+      format: "iife",
+      minify: true,
+      sourcemap: false,
+      legalComments: "inline",
+      target: ["es2022"],
+      banner: {
+        js: "/* KagNode. PM · AGPL-3.0-only · github.com/every-lemon/kagnode-pm */",
+      },
+    });
+    result.code = bundled.outputFiles[0].text;
+  }
   const digest = createHash("sha256")
       .update(result.code)
       .digest("hex")

@@ -3,8 +3,8 @@
   "type": "module",
   "scripts": {
     "build:web": "node scripts/build_web.mjs",
-    "check:web": "node scripts/build_web.mjs --check && node --check web/app.js",
-    "format:check": "prettier --check web/app.js web/app.css scripts/*.mjs package.json README.md CHANGELOG.md SECURITY.md docs .github/workflows"
+    "check:web": "node scripts/build_web.mjs --check && node --check web/app.js && node --check web/proxies.js && node --test tests/proxies.test.mjs",
+    "format:check": "prettier --check web/app.js web/proxies.js tests/proxies.test.mjs web/app.css scripts/*.mjs package.json README.md CHANGELOG.md SECURITY.md docs .github/workflows"
   },
   "engines": {
     "node": ">=24"

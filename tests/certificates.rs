@@ -135,3 +135,80 @@ async fn uploaded_certificate_checks_key_hostname_and_trust_before_selection() {
     assert_eq!(result["renewal"], "manual");
     assert_eq!(result["traffic_reloaded"], false);
 }
+
+#[test]
+fn production_promotion_replaces_a_staging_lineage_without_forcing_regular_renewals() {
+    let root = tempfile::tempdir().unwrap();
+    let renewal = root.path().join("acme/config/renewal");
+    std::fs::create_dir_all(&renewal).unwrap();
+    let file = renewal.join("kn-service.conf");
+    std::fs::write(
+        &file,
+        "[renewalparams]\nserver = https://acme-staging-v02.api.letsencrypt.org/directory\n",
+    )
+    .unwrap();
+    let mut request = Request {
+        id: "service".into(),
+        domains: vec!["service.example.com".into()],
+        email: "admin@example.com".into(),
+        provider: Provider::Http {},
+        authority: "letsencrypt".into(),
+        staging: false,
+    };
+    assert!(
+        request
+            .arguments(root.path())
+            .unwrap()
+            .contains(&"--force-renewal".into())
+    );
+    request.staging = true;
+    assert!(
+        !request
+            .arguments(root.path())
+            .unwrap()
+            .contains(&"--force-renewal".into())
+    );
+    request.staging = false;
+    std::fs::write(
+        &file,
+        "server = https://acme-v02.api.letsencrypt.org/directory\n",
+    )
+    .unwrap();
+    assert!(
+        !request
+            .arguments(root.path())
+            .unwrap()
+            .contains(&"--force-renewal".into())
+    );
+}
+#[tokio::test]
+async fn public_production_issuance_refuses_untrusted_certificate_chains() {
+    let root = tempfile::tempdir().unwrap();
+    let cert = root.path().join("cert.pem");
+    let key = root.path().join("key.pem");
+    kagnode_proxy_manager::tls::command(
+        "/usr/bin/openssl",
+        &[
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            key.to_str().unwrap(),
+            "-out",
+            cert.to_str().unwrap(),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=STAGING fixture",
+        ],
+    )
+    .await
+    .unwrap();
+    std::fs::copy(&cert, root.path().join("chain.pem")).unwrap();
+    let error = kagnode_proxy_manager::certificates::validate_public_chain(root.path())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("not publicly trusted"));
+}

@@ -136,10 +136,10 @@ async def journey(browser, origin, password, width):
     name = "browser-" + str(width) + "-" + secrets.token_hex(3)
     await dialog.locator("input[name=name]").fill(name)
     await dialog.locator("textarea[name=domains]").fill(name + ".example.com")
-    await dialog.locator("textarea[name=upstreams]").fill("http://127.0.0.1:8080")
+    await dialog.locator("input[name=upstream_address]").fill("http://127.0.0.1:8080")
     await dialog.get_by_role("button", name="Save draft", exact=True).click()
     await page.wait_for_function("() => !document.querySelector('dialog[open]')")
-    await page.get_by_role("cell", name=name, exact=True).wait_for()
+    await page.get_by_text(name, exact=True).wait_for()
     bootstrap = json.loads(await page.locator("#session-data").text_content())
     bad = await context.request.post(
         origin + "/api/v1/servers/fixture-server/packages/plans",
@@ -152,6 +152,78 @@ async def journey(browser, origin, password, width):
     )
     resources = await response.json()
     item = next(r for r in resources if r["name"] == name)
+    # Existing advanced settings and weighted peers survive a basic form edit.
+    preserved = item["settings"]["settings"]
+    preserved.update(
+        {
+            "headers": {"X-Original": "keep: this"},
+            "compression": True,
+            "force_https": False,
+            "authentication": "staff",
+            "allowed_clients": ["192.0.2.0/24"],
+        }
+    )
+    preserved["upstreams"] = [
+        {"address": "http://127.0.0.1:8080", "weight": 7, "backup": False},
+        {"address": "http://127.0.0.1:8081", "weight": 3, "backup": True},
+    ]
+    seeded = await context.request.post(
+        origin + "/api/v1/servers/fixture-server/resources",
+        headers={"X-CSRF-Token": bootstrap["csrf"], "Origin": origin},
+        data={
+            "id": item["id"],
+            "revision": item["revision"],
+            "name": name,
+            "resource": item["settings"],
+        },
+    )
+    assert seeded.status == 200
+    await page.reload()
+    row = page.locator("tr").filter(has=page.get_by_text(name, exact=True))
+    await row.get_by_role("button", name="Edit", exact=True).click()
+    editor = page.locator("dialog[open]")
+    await editor.locator("input[name=upstream_weight]").first.fill("9")
+    await editor.get_by_role("button", name="Save draft", exact=True).click()
+    await editor.wait_for(state="detached")
+    updated = await (
+        await context.request.get(origin + "/api/v1/servers/fixture-server/resources")
+    ).json()
+    item = next(r for r in updated if r["name"] == name)
+    current = item["settings"]["settings"]
+    assert (
+        current["upstreams"][0]["weight"] == 9
+        and current["upstreams"][1]["backup"]
+        and current["upstreams"][1]["weight"] == 3
+    )
+    for key in [
+        "headers",
+        "compression",
+        "force_https",
+        "authentication",
+        "allowed_clients",
+    ]:
+        assert current[key] == preserved[key], key
+    await page.get_by_role("button", name="Review and publish", exact=True).click()
+    await (
+        page.locator("dialog[open]")
+        .get_by_role("heading", name="Review publication")
+        .wait_for()
+    )
+    await page.keyboard.press("Escape")
+    row = page.locator("tr").filter(has=page.get_by_text(name, exact=True))
+    await row.get_by_role("button", name="Retire", exact=True).click()
+    await (
+        page.locator("dialog[open]")
+        .get_by_role("button", name="Retire route", exact=True)
+        .click()
+    )
+    await page.wait_for_function("() => !document.querySelector('dialog[open]')")
+    await page.get_by_role("combobox", name="Publication status", exact=True).click()
+    await page.get_by_role("option", name="Retired routes", exact=True).click()
+    retired = page.locator("tr").filter(has=page.get_by_text(name, exact=True))
+    await retired.get_by_role("button", name="Restore", exact=True).click()
+    await page.get_by_role("combobox", name="Publication status", exact=True).wait_for()
+    await page.get_by_text(name, exact=True).wait_for()
     update = {
         "id": item["id"],
         "revision": 0,
@@ -183,7 +255,11 @@ async def journey(browser, origin, password, width):
 
 
 async def main():
-    binary = ROOT / "target/debug/kagnode-proxy-manager"
+    binary = Path(
+        os.environ.get(
+            "KAGNODE_PM_BINARY", str(ROOT / "target/debug/kagnode-proxy-manager")
+        )
+    )
     engine = os.environ.get("KAGNODE_BROWSER_ENGINE", "chromium")
     password = secrets.token_urlsafe(32)
     report = []
