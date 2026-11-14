@@ -24,7 +24,11 @@ def check():
         hashlib.sha256(manifest_path.read_bytes()).hexdigest()
         == lock["signed_ui_manifest_sha256"]
     )
-    assert manifest["version"] == lock["baseline"] and lock["patch_range"] == "5.0.x"
+    assert (
+        manifest["version"] == lock["baseline"]
+        and manifest["source_commit"] == lock["source_commit"]
+        and lock["patch_range"] == "5.0.x"
+    )
     subprocess.run(
         [
             "openssl",
