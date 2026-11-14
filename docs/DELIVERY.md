@@ -24,3 +24,9 @@ The target product is the user-approved multi-server Rust Proxy Manager, Ubuntu 
 - [ ] Controlled cutover, route health checks and rollback rehearsal pass.
 
 No production service, package, route, firewall, DNS or certificate has been changed by creating this source repository. This checklist records unfinished work explicitly; it is not a native qualification claim.
+
+## Verified deployment scope
+
+An explicit Ubuntu 24.04 amd64 deployment has passed native login, mTLS, typed-helper isolation, real reverse traffic, removal of a disposable package with configuration retention, protected SSH-package refusal, local credential rotation and failed-candidate recovery. Chromium and WebKit covered mobile/tablet/desktop; a separate live browser check covered seven pages. The live migration preserved five HTTPS host responses, redirects and certificate fingerprints, retained the independent management TLS identity, and verified a downloaded encrypted backup before cutover. The timed rollback was cancelled only after independent checks; manual rollback remains available.
+
+GitHub checks also pass Rust 1.88 and ARM64 builds/unit tests. These results do not qualify Debian/ARM native operation, public forward-proxy isolation/quotas, every ACME provider, remote-agent certificate rotation or application-update transactions. Those remaining gates above are intentionally not marked complete.

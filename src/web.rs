@@ -223,16 +223,16 @@ async fn asset(Path(file): Path<String>) -> Response {
 pub fn shell(title: &str, u: Option<&User>, content: &str) -> String {
     let esc = crate::core::escape;
     let mut navigation = if u.is_some() {
-        ["Overview","Servers","Reverse proxies","Streams","Forward proxies","Certificates","Packages","Jobs","Audit","Account"].into_iter().zip(["/","/servers","/reverse-proxies","/streams","/forward-proxies","/certificates","/packages","/jobs","/audit","/account"]).map(|(label,url)|format!("<a class=\"nav-item\" href=\"{url}\"><span data-core-icon=\"{}\"></span><span class=\"nav-label\">{label}</span></a>",if label=="Overview"{"home"}else{"server"})).collect::<String>()
+        ["Overview","Servers","Reverse proxies","Streams","Forward proxies","Certificates","Packages","Jobs","Audit","Account"].into_iter().zip(["/","/servers","/reverse-proxies","/streams","/forward-proxies","/certificates","/packages","/jobs","/audit","/account"]).map(|(label,url)|format!("<a class=\"nav-item\" href=\"{url}\"><span data-core-icon=\"{}\"></span><span class=\"nav-label\">{label}</span></a>",match label {"Overview"=>"home","Servers"=>"compute","Reverse proxies"=>"domains","Streams"=>"networking","Forward proxies"=>"delivery","Certificates"=>"lock","Packages"=>"archive","Jobs"=>"clock","Audit"=>"observability",_=>"account"})).collect::<String>()
     } else {
         String::new()
     };
     if u.is_some_and(|u| u.role.administer()) {
-        navigation.push_str("<a class=\"nav-item\" href=\"/users\"><span data-core-icon=\"users\"></span><span class=\"nav-label\">Users and access</span></a>");
+        navigation.push_str("<a class=\"nav-item\" href=\"/users\"><span data-core-icon=\"community\"></span><span class=\"nav-label\">Users and access</span></a>");
     }
     let sidebar = if u.is_some() {
         format!(
-            "<aside class=\"sidebar\"><a class=\"brand\" href=\"/\"><img src=\"/kagnode-core/5.0.9/mark.svg\" alt=\"\" width=\"28\"><span class=\"brand-copy\"><strong>KagNode.</strong><small>Proxy Manager</small></span></a><nav>{navigation}</nav><button data-sidebar-toggle aria-label=\"Collapse sidebar\"></button></aside>"
+            "<aside class=\"sidebar\"><a class=\"brand\" href=\"/\"><img src=\"/kagnode-core/5.0.9/mark.svg\" alt=\"\" width=\"28\"><span class=\"brand-copy\"><strong>KagNode.</strong><small>Proxy Manager</small></span></a><nav>{navigation}</nav></aside>"
         )
     } else {
         String::new()

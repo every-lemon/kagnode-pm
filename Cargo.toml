@@ -45,4 +45,3 @@ tower = { version = "0.5", features = ["util"] }
 lto = "thin"
 strip = true
 codegen-units = 1
-

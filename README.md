@@ -8,7 +8,7 @@ A new Rust application for managing reverse proxies, authenticated forward proxi
 
 ## Release status
 
-**In development. Target version: 5.0.0. No stable release or live migration has been qualified.**
+**Version 5.0.0: Ubuntu 24.04 amd64 native deployment and legacy migration verified.** Broader native-platform, forward-engine and external certificate-provider qualification remains pending; a general stable package release has not been published.
 
 The repository distinguishes implemented functions from verification still required in [the delivery checklist](docs/DELIVERY.md). Do not replace a working proxy using an unqualified development build. All KagNode release versions remain on the 5.0.x line.
 
@@ -31,11 +31,11 @@ Target systems: Ubuntu 24.04 or Debian 13, Linux amd64/arm64 with systemd. Nginx
 
 Release formats are planned as application `.deb`, `.tar.xz`, `.tar.gz` and `.zip`, plus corresponding source archives. RPM is source/data only; Rocky Linux native operation is outside the supported platform matrix.
 
-| Platform     | Architecture           | Application/native status |
-| ------------ | ---------------------- | ------------------------- |
-| Ubuntu 24.04 | amd64 / arm64          | Qualification pending     |
-| Debian 13    | amd64 / arm64          | Qualification pending     |
-| Rocky Linux  | noarch source/data RPM | No native support claim   |
+| Platform     | Architecture           | Application/native status                                     |
+| ------------ | ---------------------- | ------------------------------------------------------------- |
+| Ubuntu 24.04 | amd64 / arm64          | amd64 native verified; arm64 build/tests pass, native pending |
+| Debian 13    | amd64 / arm64          | Qualification pending                                         |
+| Rocky Linux  | noarch source/data RPM | No native support claim                                       |
 
 ## Usage
 
