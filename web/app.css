@@ -205,6 +205,7 @@ main {
   background: var(--panel);
 }
 table {
+  min-width: 680px;
   border-collapse: collapse;
   width: 100%;
   text-align: left;
@@ -222,7 +223,12 @@ th {
 }
 td {
   overflow-wrap: anywhere;
+  min-width: 110px;
 }
+td:first-child {
+  min-width: 160px;
+}
+
 tr:last-child td {
   border: 0;
 }

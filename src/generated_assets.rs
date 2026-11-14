@@ -2,6 +2,6 @@
 pub const JS_NAME: &str = "app.2ec4f4577e93d6bb.js";
 #[rustfmt::skip]
 pub const JS: &str = include_str!("../web/generated/app.2ec4f4577e93d6bb.js");
-pub const CSS_NAME: &str = "app.4c38bc851c031d64.css";
+pub const CSS_NAME: &str = "app.00180f51c7f27a88.css";
 #[rustfmt::skip]
-pub const CSS: &str = include_str!("../web/generated/app.4c38bc851c031d64.css");
+pub const CSS: &str = include_str!("../web/generated/app.00180f51c7f27a88.css");
