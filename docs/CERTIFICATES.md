@@ -34,3 +34,7 @@ Successful uploads create immutable certificate versions. They never reload traf
 - `POST /api/v1/servers/:id/certificates/activate`: activate a reviewed certificate version with the expected current SHA-256 fingerprint and an idempotency key.
 
 No private-key read/download endpoint is exposed.
+
+## Staging-to-production promotion
+
+A staging test uses an untrusted test certificate. When a Let's Encrypt lineage was created against staging, a production request explicitly replaces it rather than reusing Certbot's still-valid staging result. Public-authority production certificates must chain to the system CA store and cover every requested hostname before PM selects them. A normal production lineage is not force-renewed on every request. Certificate selection still requires a reviewed route publication to change live traffic.

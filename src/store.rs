@@ -64,6 +64,7 @@ impl Store {
  CREATE TABLE IF NOT EXISTS oauth(state TEXT PRIMARY KEY,verifier TEXT NOT NULL,request TEXT NOT NULL,cookie TEXT NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS core_notice_dismissals(user TEXT NOT NULL,notice TEXT NOT NULL,seen INTEGER NOT NULL,PRIMARY KEY(user,notice));
  ")?;
+        db.execute("INSERT OR IGNORE INTO revisions(resource,revision,settings,actor,created) SELECT id,revision,settings,'baseline-snapshot',? FROM resources",[now()])?;
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
             root: root.into(),
@@ -182,8 +183,144 @@ impl Store {
         let out=q.query_map([server],|r|Ok(json!({"id":r.get::<_,String>(0)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"settings":serde_json::from_str::<Value>(&r.get::<_,String>(3)?).unwrap_or(json!(null)),"revision":r.get::<_,i64>(4)?,"published":r.get::<_,i64>(5)?})))?.collect::<std::result::Result<Vec<_>,_>>()?;
         Ok(json!(out))
     }
+    fn review(db: &Connection, server: &str) -> Result<Value> {
+        let mut q=db.prepare("SELECT id,name,kind,settings,revision,published,deleted FROM resources WHERE server=? AND (deleted=0 OR published>0) ORDER BY id")?;
+        let rows=q.query_map([server],|r|Ok(json!({"id":r.get::<_,String>(0)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"settings":serde_json::from_str::<Value>(&r.get::<_,String>(3)?).unwrap_or(Value::Null),"revision":r.get::<_,i64>(4)?,"published":r.get::<_,i64>(5)?,"deleted":r.get::<_,bool>(6)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let revisions: std::collections::BTreeMap<_, _> = rows
+            .iter()
+            .filter(|r| r["deleted"] != true)
+            .map(|r| {
+                (
+                    r["id"].as_str().unwrap().to_owned(),
+                    r["revision"].as_i64().unwrap(),
+                )
+            })
+            .collect();
+        let changes:Vec<_>=rows.iter().filter(|r|r["deleted"]==true||r["revision"]!=r["published"]).map(|r| {
+            let before:Option<String>=db.query_row("SELECT settings FROM revisions WHERE resource=? AND revision=?",params![r["id"].as_str().unwrap(),r["published"].as_i64().unwrap()],|row|row.get(0)).ok();
+            json!({"id":r["id"],"name":r["name"],"kind":r["kind"],"change":if r["deleted"]==true{"remove"}else if r["published"]==0{"add"}else{"update"},"revision":r["revision"],"published":r["published"],"before":before.and_then(|v|serde_json::from_str::<Value>(&v).ok()),"after":if r["deleted"]==true{Value::Null}else{r["settings"].clone()}})
+        }).collect();
+        let fingerprint = crate::digest(serde_json::to_vec(&rows)?);
+        let busy:i64=db.query_row("SELECT count(*) FROM jobs WHERE server=? AND kind='configure' AND state IN ('queued','running','uncertain')",[server],|r|r.get(0))?;
+        Ok(
+            json!({"server":server,"revisions":revisions,"review_sha256":fingerprint,"changes":changes,"pending_count":changes.len(),"total_routes":revisions.len(),"busy":busy>0,"rows":rows}),
+        )
+    }
+    pub fn publication_review(&self, server: &str) -> Result<Value> {
+        let db = self.db.lock().unwrap();
+        let mut value = Self::review(&db, server)?;
+        value.as_object_mut().unwrap().remove("rows");
+        Ok(value)
+    }
+    pub fn queue_publication(
+        &self,
+        actor: &str,
+        server: &str,
+        request_key: &str,
+        revisions: &std::collections::BTreeMap<String, i64>,
+        review_hash: Option<&str>,
+    ) -> Result<String> {
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction()?;
+        // Replay the exact frozen operation, even after its receipt changed live pointers.
+        if let Ok((id, old_actor, old_server, kind, payload)) = tx.query_row(
+            "SELECT id,actor,server,kind,payload FROM jobs WHERE request_key=?",
+            [request_key],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            },
+        ) {
+            let payload: Value = serde_json::from_str(&payload)?;
+            let old_revisions: std::collections::BTreeMap<String, i64> = payload["revisions"]
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("Invalid saved publication"))?
+                .iter()
+                .map(|r| {
+                    (
+                        r["id"].as_str().unwrap_or("").to_owned(),
+                        r["revision"].as_i64().unwrap_or(0),
+                    )
+                })
+                .collect();
+            ensure!(
+                old_actor == actor
+                    && old_server == server
+                    && kind == "configure"
+                    && old_revisions == *revisions
+                    && payload["review_sha256"].as_str() == review_hash,
+                "Idempotency key belongs to a different operation"
+            );
+            return Ok(id);
+        }
+        let review = Self::review(&tx, server)?;
+        ensure!(
+            serde_json::to_value(revisions)? == review["revisions"],
+            "conflict: server drafts changed; reload and review before publishing"
+        );
+        if let Some(expected) = review_hash {
+            ensure!(
+                review["review_sha256"] == expected,
+                "conflict: publication review changed; reload before publishing"
+            );
+        }
+        ensure!(
+            review["busy"] == false,
+            "A publication is already pending or requires recovery; inspect Jobs before publishing again"
+        );
+        let rows: Vec<_> = review["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["deleted"] != true)
+            .cloned()
+            .collect();
+        let resources: Vec<_> = rows
+            .iter()
+            .map(|r| json!([r["name"], r["settings"]]))
+            .collect();
+        let payload = json!({"resources":resources,"revisions":rows,"review_sha256":review_hash});
+        let id = Self::enqueue_tx(&tx, actor, server, "configure", payload, request_key)?;
+        tx.execute(
+            "INSERT INTO audit(actor,action,target,detail,created)VALUES(?,?,?,?,?)",
+            params![
+                actor,
+                "configuration.queued",
+                server,
+                json!({"job":id}).to_string(),
+                now()
+            ],
+        )?;
+        tx.commit()?;
+        Ok(id)
+    }
+    pub fn resource_history(&self, id: &str) -> Result<Value> {
+        let db = self.db.lock().unwrap();
+        let mut q=db.prepare("SELECT revision,settings,created FROM revisions WHERE resource=? ORDER BY revision DESC LIMIT 30")?;
+        let rows=q.query_map([id],|r|Ok(json!({"revision":r.get::<_,i64>(0)?,"settings":serde_json::from_str::<Value>(&r.get::<_,String>(1)?).unwrap_or(Value::Null),"created":r.get::<_,i64>(2)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(json!(rows))
+    }
     pub fn enqueue(
         &self,
+        actor: &str,
+        server: &str,
+        kind: &str,
+        payload: Value,
+        request_key: &str,
+    ) -> Result<String> {
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction()?;
+        let id = Self::enqueue_tx(&tx, actor, server, kind, payload, request_key)?;
+        tx.commit()?;
+        Ok(id)
+    }
+    fn enqueue_tx(
+        tx: &rusqlite::Transaction<'_>,
         actor: &str,
         server: &str,
         kind: &str,
@@ -199,8 +336,6 @@ impl Store {
             serialized_payload.len() < 48 * 1024,
             "Operation exceeds the bounded agent protocol; split this change into smaller server configurations"
         );
-        let mut db = self.db.lock().unwrap();
-        let tx = db.transaction()?;
         if let Ok((id, s, k, p, a)) = tx.query_row(
             "SELECT id,server,kind,payload,actor FROM jobs WHERE request_key=?",
             [request_key],
@@ -228,7 +363,6 @@ impl Store {
         ensure!(count < 100, "Server job queue is full");
         let id = random();
         tx.execute("INSERT INTO jobs(id,server,kind,payload,actor,created,updated,request_key) VALUES(?,?,?,?,?,?,?,?)",params![id,server,kind,payload.to_string(),actor,now(),now(),request_key])?;
-        tx.commit()?;
         Ok(id)
     }
     pub fn claim(&self, server: &str) -> Result<Value> {

@@ -1,3 +1,4 @@
+import { createProxyUI } from "./proxies.js";
 /* KagNode Proxy Manager host workflows. Core owns shared components and motion. */
 (() => {
   "use strict";
@@ -353,6 +354,20 @@
     };
     m.body.append(f);
   }
+  const proxyUI = createProxyUI({
+    api,
+    post,
+    el,
+    button,
+    modal,
+    field,
+    busy,
+    notice,
+    refresh,
+    table,
+    getServer: () => selected,
+    canWrite,
+  });
   async function resourcePage() {
     const kind = {
       "reverse-proxies": "proxy_host",
@@ -386,13 +401,29 @@
       );
     }
     const rows = resources.filter((r) => r.kind === kind);
-    if (!rows.length) {
+    if (!rows.length && kind !== "proxy_host") {
       root.append(
         empty(
           "No " + page.replaceAll("-", " ") + " yet",
           "Create a draft, review the configuration and publish it to this server.",
         ),
       );
+      return;
+    }
+    if (kind === "proxy_host") {
+      const review = await api("/servers/" + selected + "/publication-review");
+      const bar = el("div", undefined, "pm-publication-bar");
+      bar.append(
+        el(
+          "span",
+          review.pending_count
+            ? review.pending_count + " unpublished changes"
+            : "All routes published",
+        ),
+      );
+      if (review.pending_count && canWrite())
+        bar.append(button("Review changes", () => proxyUI.publish(), true));
+      root.append(bar, proxyUI.list(rows));
       return;
     }
     root.append(
@@ -430,53 +461,15 @@
     );
   }
   function editResource(kind, row) {
+    if (kind === "proxy_host") return proxyUI.edit(row);
+    const editingServer = selected;
     const m = modal(
         row ? "Edit " + row.name : "New " + kind.replaceAll("_", " "),
       ),
       f = el("form", undefined, "form-grid"),
       v = row?.settings.settings || {};
     field(f, "Name", "name", row?.name || "");
-    if (kind === "proxy_host") {
-      field(
-        f,
-        "Domains, one per line",
-        "domains",
-        (v.domains || []).join("\n"),
-        "textarea",
-        true,
-      );
-      field(
-        f,
-        "Upstream origins, one per line",
-        "upstreams",
-        (v.upstreams || []).map((u) => u.address).join("\n"),
-        "textarea",
-        true,
-      );
-      field(f, "Route path", "path", v.path || "/");
-      field(f, "Certificate ID (optional)", "certificate", v.certificate || "");
-      field(
-        f,
-        "Timeout, seconds",
-        "timeout",
-        v.timeout_seconds || 60,
-        "number",
-      );
-      field(f, "Upload limit, MiB", "upload", v.max_body_mib ?? 16, "number");
-      const label = el("label", "Balance"),
-        select = el("select");
-      select.name = "balance";
-      for (const n of ["round_robin", "least_connections", "ip_hash"]) {
-        const o = el("option", n.replaceAll("_", " "));
-        o.value = n;
-        select.append(o);
-      }
-      select.value = v.balance || "round_robin";
-      label.append(select);
-      f.append(label);
-      const ws = field(f, "Enable WebSockets", "websocket", "", "checkbox");
-      ws.checked = v.websocket !== false;
-    } else if (kind === "stream") {
+    if (kind === "stream") {
       field(
         f,
         "Listen address and port",
@@ -545,23 +538,7 @@
             .map((s) => s.trim())
             .filter(Boolean);
       let settings;
-      if (kind === "proxy_host")
-        settings = {
-          ...v,
-          domains: lines("domains"),
-          upstreams: lines("upstreams").map((address) => ({
-            address,
-            weight: 1,
-            backup: false,
-          })),
-          path: get("path"),
-          certificate: get("certificate") || null,
-          timeout_seconds: Number(get("timeout")),
-          max_body_mib: Number(get("upload")),
-          balance: get("balance"),
-          websocket: f.elements.websocket.checked,
-        };
-      else if (kind === "stream")
+      if (kind === "stream")
         settings = {
           listen: get("listen"),
           upstream: get("upstream"),
@@ -583,7 +560,7 @@
         };
       await busy(submit, "Saving draft…", async () => {
         try {
-          await post("/servers/" + selected + "/resources", {
+          await post("/servers/" + editingServer + "/resources", {
             name: get("name"),
             resource: { kind, settings },
             id: row?.id || null,
@@ -602,23 +579,7 @@
     m.body.append(f);
   }
   async function publish() {
-    const current = await api("/servers/" + selected + "/resources");
-    confirmAction(
-      "Publish this server?",
-      "The agent will validate the complete configuration before activating it. A failed validation keeps existing traffic unchanged.",
-      async () => {
-        const data = await post("/servers/" + selected + "/publish", {
-          request_key: crypto.randomUUID(),
-          revisions: Object.fromEntries(current.map((r) => [r.id, r.revision])),
-        });
-        notice(
-          "Configuration queued. Follow operation " +
-            data.job.slice(0, 12) +
-            " in Jobs.",
-        );
-      },
-      JSON.stringify(current, null, 2),
-    );
+    return proxyUI.publish();
   }
   function confirmAction(title, description, apply, preview) {
     const m = modal(title);

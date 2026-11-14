@@ -16,6 +16,7 @@
   "docs/STRUCTURE.md",
   "package-lock.json",
   "package.json",
+  "packaging/release-public.pem",
   "packaging/release.json",
   "packaging/source-files.json",
   "scripts/build_web.mjs",
@@ -60,6 +61,8 @@
   "tests/certificates.rs",
   "tests/engines.rs",
   "tests/mfa.rs",
+  "tests/proxies.test.mjs",
+  "tests/publication.rs",
   "tests/receipts.rs",
   "tests/security.rs",
   "tests/test_discovery.py",
@@ -126,6 +129,7 @@
   "vendor/core/theme.f753df83b238f1c8.js",
   "web/app.css",
   "web/app.js",
-  "web/generated/app.00180f51c7f27a88.css",
-  "web/generated/app.2ec4f4577e93d6bb.js"
+  "web/generated/app.470c562b34a5bbdf.css",
+  "web/generated/app.ffdbc00edde23fc2.js",
+  "web/proxies.js"
 ]

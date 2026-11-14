@@ -8,7 +8,7 @@ A new Rust application for managing reverse proxies, authenticated forward proxi
 
 ## Release status
 
-**Version 5.0.0: Ubuntu 24.04 amd64 native deployment and legacy migration verified.** Broader native-platform, forward-engine and external certificate-provider qualification remains pending; a general stable package release has not been published.
+**Version 5.0.2: PM editing, publication review and production-certificate repairs.** Ubuntu 24.04 amd64 is the native deployment target; see the dated validation notes. Broader native-platform, forward-engine and external certificate-provider qualification remains pending; a general stable package release has not been published.
 
 The repository distinguishes implemented functions from verification still required in [the delivery checklist](docs/DELIVERY.md). Do not replace a working proxy using an unqualified development build. All KagNode release versions remain on the 5.0.x line.
 
@@ -22,6 +22,8 @@ The repository distinguishes implemented functions from verification still requi
 - Read-only discovery for Nginx, Caddy, Apache, HAProxy and Traefik, with source review and verified draft import.
 - Canonical Core login/sidebar/account presentation and permission-filtered quick search.
 - Independent ACME authority/validation selection and encrypted queued certificate upload.
+- Structured reverse-proxy editing, preserved upstream weights, publication status, searchable routes, recoverable retirement and revision history.
+- Reviewed publication snapshots and visible asynchronous outcomes; conflicting or duplicate changes cannot silently replace a reviewed configuration.
 
 Full capability and native-qualification status is recorded in the delivery checklist; listing a feature does not imply its native runtime is qualified.
 
@@ -31,7 +33,7 @@ Target systems: Ubuntu 24.04 or Debian 13, Linux amd64/arm64 with systemd. Nginx
 
 ## Installation and downloads
 
-Release formats are planned as application `.deb`, `.tar.xz`, `.tar.gz` and `.zip`, plus corresponding source archives. RPM is source/data only; Rocky Linux native operation is outside the supported platform matrix.
+Release formats include application `.deb`, `.tar.xz`, `.tar.gz` and `.zip`, plus corresponding source archives. RPM is source/data only; Rocky Linux native operation is outside the supported platform matrix.
 
 | Platform     | Architecture           | Application/native status                                     |
 | ------------ | ---------------------- | ------------------------------------------------------------- |
