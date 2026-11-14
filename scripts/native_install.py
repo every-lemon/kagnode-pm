@@ -198,6 +198,8 @@ def inspect(configuration, source):
     from discover_config import discover
 
     existing = discover(with_containers=False)
+    # Review digests bind source bytes/ownership, not the wall clock of a scan.
+    existing.pop("sampled", None)
     return {
         "existing_configuration": existing,
         "adoption": "Review detected configuration in PM. Installation does not adopt sites or replace traffic listeners.",
