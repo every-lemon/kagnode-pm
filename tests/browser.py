@@ -65,6 +65,23 @@ async def journey(browser, origin, password, width):
     assert await page.evaluate(
         "() => document.documentElement.scrollWidth <= innerWidth + 1"
     )
+    assert await page.locator("[data-sidebar-toggle]").count() == 0, (
+        "Legacy blank toggle remains"
+    )
+    assert await page.locator(".kn-core-sidebar-toggle").count() == 1
+    if width >= 1024:
+        for _ in range(4):
+            await page.locator(".kn-core-sidebar-toggle").click()
+            await page.mouse.move(1000, 200)
+            await page.locator("#main").focus()
+            await page.wait_for_timeout(300)
+            assert await page.evaluate(
+                "document.querySelector('.workspace').getBoundingClientRect().left >= document.querySelector('.sidebar').getBoundingClientRect().width - 1"
+            )
+    else:
+        await page.get_by_role("button", name="Open navigation", exact=True).click()
+        await page.keyboard.press("Escape")
+        await page.wait_for_function("document.querySelector('.sidebar').inert")
     for route in [
         "servers",
         "reverse-proxies",
