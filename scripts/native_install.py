@@ -179,7 +179,7 @@ def inspect(configuration, source):
             if (
                 key == "management_bind"
                 and configuration.get("behind_proxy")
-                and not ip.is_loopback()
+                and not ip.is_loopback
             ):
                 raise ValueError("Plain management must remain on loopback")
         secret = protected(configuration.get("password_file", ""), private=True)
