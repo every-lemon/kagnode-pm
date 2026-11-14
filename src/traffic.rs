@@ -265,7 +265,7 @@ pub async fn configure(
         }
     );
     crate::private_write(&dir.join("nginx.conf"), config.as_bytes())?;
-    crate::tls::command(
+    let validation = crate::tls::command(
         "/usr/sbin/nginx",
         &[
             "-t",
@@ -275,7 +275,12 @@ pub async fn configure(
             dir.join("nginx.conf").to_str().unwrap(),
         ],
     )
-    .await?;
+    .await;
+    if let Err(error) = validation {
+        return Ok(
+            json!({"state":"rejected","phase":"validation","traffic_unchanged":true,"error":error.to_string()}),
+        );
+    }
     let current = root.join("current");
     let previous = std::fs::read_link(&current).ok();
     let mut units = vec![];

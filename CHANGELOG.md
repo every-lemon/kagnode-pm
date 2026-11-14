@@ -5,6 +5,7 @@
 - Review added, changed and removed routes before publication; bind the UI review to an atomic frozen server snapshot, retain exact-request replay and block overlapping publications.
 - Show publication progress and distinguish confirmed activation from uncertain outcomes.
 - Reissue existing Let's Encrypt staging lineages when production is requested, and reject untrusted public-authority production chains before selecting them.
+- Report known Nginx pre-activation validation rejection as failed, preserving traffic and allowing a corrected draft without an uncertainty hold. Genuine interrupted/unknown outcomes still require inspection.
 - Return a clear forbidden response for expired/cross-origin CSRF forms.
 
 # 5.0.1

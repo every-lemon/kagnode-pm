@@ -238,6 +238,13 @@ async fn tick(config: &AgentConfig, client: &reqwest::Client, active: &ActiveJob
         Err(error) => (Err(error), false),
     };
     record["outcome"] = match result {
+        Ok(result)
+            if result["state"] == "rejected"
+                && result["phase"] == "validation"
+                && result["traffic_unchanged"] == true =>
+        {
+            json!({"state":"failed","error":result["error"],"result":result,"completed":crate::now(),"recovery":"Candidate validation failed before activation; correct the draft and publish a new review."})
+        }
         Ok(result) => json!({"state":"completed","result":result,"completed":crate::now()}),
         Err(error) => {
             json!({"state":if mutation{"uncertain"}else{"failed"},"error":error.to_string(),"completed":crate::now(),"recovery":if mutation{"Inspect the private node recovery state before clearing this hold; the operation is not replayed."}else{"No mutating operation was requested."}})
