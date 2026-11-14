@@ -228,7 +228,6 @@ async fn tick(config: &AgentConfig, client: &reqwest::Client, active: &ActiveJob
                 Operation::Configure { .. }
                     | Operation::PackageRemove { .. }
                     | Operation::CertificateIssue { .. }
-                    | Operation::CertificateUpload { .. }
                     | Operation::CertificateActivate { .. }
             );
             (

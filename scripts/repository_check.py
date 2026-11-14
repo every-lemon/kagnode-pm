@@ -84,6 +84,10 @@ def check():
         .decode()
         .split("\0")
     )
+    allowlist = json.loads((ROOT / "packaging/source-files.json").read_text())
+    assert allowlist == sorted(n for n in names if n), (
+        "Refresh the exact committed source allowlist after changing generated files"
+    )
     forbidden = {
         "target",
         "node_modules",

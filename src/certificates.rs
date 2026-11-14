@@ -638,6 +638,12 @@ pub async fn activate_uploaded(
         "An interrupted activation requires recovery first"
     );
     let selected = root.join("certificates").join(id);
+    if let Ok(meta) = std::fs::symlink_metadata(&selected) {
+        ensure!(
+            meta.file_type().is_symlink(),
+            "Existing certificate directories require reviewed adoption before replacement"
+        );
+    }
     let previous = std::fs::read_link(&selected).ok();
     let actual = std::fs::read(selected.join("fullchain.pem"))
         .ok()

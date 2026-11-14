@@ -17,6 +17,7 @@
   "package-lock.json",
   "package.json",
   "packaging/release.json",
+  "packaging/source-files.json",
   "scripts/build_web.mjs",
   "scripts/discover_config.py",
   "scripts/installer_protocol.py",
@@ -125,6 +126,6 @@
   "vendor/core/theme.f753df83b238f1c8.js",
   "web/app.css",
   "web/app.js",
-  "web/generated/app.2ec4f4577e93d6bb.js",
-  "web/generated/app.4c38bc851c031d64.css"
+  "web/generated/app.00180f51c7f27a88.css",
+  "web/generated/app.2ec4f4577e93d6bb.js"
 ]
