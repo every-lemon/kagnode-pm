@@ -28,6 +28,16 @@
   };
   function notice(message) {
     feedback.replaceChildren(el("p", message, "notice"));
+    const dialog = [...document.querySelectorAll("dialog[open]")].at(-1);
+    if (dialog) {
+      let local = dialog.querySelector(".pm-dialog-feedback");
+      if (!local) {
+        local = el("p", undefined, "notice pm-dialog-feedback");
+        local.setAttribute("role", "status");
+        dialog.prepend(local);
+      }
+      local.textContent = message;
+    }
   }
   async function api(path, options = {}) {
     const r = await fetch("/api/v1" + path, {
@@ -176,6 +186,8 @@
       else if (page === "account") await account();
       else if (page === "users") await users();
       else if (page === "certificates") await certificates();
+      else if (page === "discovery") await discovery();
+      else if (page === "search") await fullSearch();
       window.KagNodeScroll?.refresh();
       window.KagNodeSegments?.refresh();
     } catch (e) {
@@ -198,13 +210,21 @@
     if (!servers.length) {
       root.append(
         empty(
-          "Connect your first server",
-          "Enroll a server to manage routes, certificates and package operations from this dashboard.",
+          admin ? "Connect your first server" : "No servers shared yet",
+          admin
+            ? "Enroll a server to manage routes, certificates and package operations from this dashboard."
+            : "Your administrator can grant access to the servers you manage.",
         ),
       );
       if (admin) root.append(button("Add server", addServer, true));
       return;
     }
+    const summary = await api("/overview");
+    const search = button("Search sites and servers", () =>
+      window.KagNodeSearch?.open(),
+    );
+    search.classList.add("home-search");
+    root.append(search);
     const cards = el("div", undefined, "cards");
     const online = servers.filter(
       (s) => Date.now() / 1000 - s.seen < 45,
@@ -213,13 +233,28 @@
       ["Servers", servers.length],
       ["Connected", online],
       ["Awaiting connection", servers.length - online],
+      ["Draft changes", summary.draft_changes],
     ]) {
       const c = el("article", undefined, "card");
       c.append(el("small", label), el("strong", value, "metric"));
       cards.append(c);
     }
-    root.append(cards, el("h2", "Fleet activity"));
+    root.append(cards, el("h2", "Servers"));
     fleet(false);
+    if (summary.recent_jobs.length) {
+      root.append(
+        el("h2", "Recent activity"),
+        table(
+          ["Operation", "Server", "Status", "Updated"],
+          summary.recent_jobs.map((j) => [
+            j.kind.replaceAll("_", " "),
+            j.server,
+            j.state,
+            new Date(j.updated * 1000).toLocaleString(),
+          ]),
+        ),
+      );
+    }
   }
   function fleet(showAction = true) {
     if (admin && showAction)
@@ -301,7 +336,7 @@
             ),
             el(
               "pre",
-              "kagnode-proxy-manager enroll --controller " +
+              "kagnode-pm enroll --controller " +
                 data.controller +
                 " --ca /path/to/verified-controller-ca.pem < /path/to/private-token",
             ),
@@ -903,12 +938,140 @@
       };
       panel.append(f);
       root.append(panel);
+      const application = el("section", undefined, "panel");
+      root.append(application);
+      await applicationUpdates(application);
       const core = el("section", undefined, "panel");
       core.dataset.coreAdminHost = "";
       root.append(core);
     }
     window.KagNodeAppearance?.render();
     window.KagNodeCoreUpdates?.refresh?.();
+  }
+  async function applicationUpdates(panel) {
+    panel.replaceChildren(el("h2", "Application updates"));
+    let status;
+    try {
+      status = await api("/application-updates/status");
+    } catch (error) {
+      panel.append(el("p", error.message, "notice"));
+      return;
+    }
+    panel.append(
+      el("p", "KagNode. PM · " + (status.installed || session.version)),
+      el(
+        "p",
+        status.message ||
+          status.update_blocked_reason ||
+          "Signed supported releases retain backups and run health checks.",
+        "muted",
+      ),
+    );
+    if (!status.enabled) return;
+    const policy = status.update_policy;
+    if (policy?.unavailable) {
+      panel.append(
+        el(
+          "p",
+          "Inspect the damaged local update policy before editing it.",
+          "notice",
+        ),
+      );
+      return;
+    }
+    if (policy) {
+      const f = el("form", undefined, "form-grid");
+      for (const [name, label, choices] of [
+        [
+          "channel",
+          "Release channel",
+          [
+            ["stable", "Stable"],
+            ["beta", "Beta"],
+          ],
+        ],
+        [
+          "mode",
+          "Update mode",
+          [
+            ["manual", "Manual"],
+            ["auto", "Auto"],
+          ],
+        ],
+      ]) {
+        const l = el("label", label),
+          select = el("select");
+        select.name = name;
+        for (const [value, text] of choices) {
+          const option = el("option", text);
+          option.value = value;
+          select.append(option);
+        }
+        select.value = policy[name];
+        l.append(select);
+        f.append(l);
+      }
+      field(f, "Maintenance start", "start", policy.window.start, "time");
+      field(f, "Maintenance end", "end", policy.window.end, "time");
+      field(f, "Timezone", "timezone", policy.window.timezone);
+      const save = el("button", "Save update preferences", "button primary");
+      f.append(save);
+      f.onsubmit = async (event) => {
+        event.preventDefault();
+        await busy(save, "Saving update preferences…", async () => {
+          try {
+            await post("/application-updates/policy", {
+              channel: f.elements.channel.value,
+              mode: f.elements.mode.value,
+              window: {
+                start: f.elements.start.value,
+                end: f.elements.end.value,
+                timezone: f.elements.timezone.value.trim(),
+              },
+              revision: policy.revision,
+            });
+            notice(
+              "Update preferences saved. Installed versions are unchanged.",
+            );
+            await applicationUpdates(panel);
+          } catch (error) {
+            notice(error.message);
+          }
+        });
+      };
+      panel.append(f);
+    }
+    panel.append(
+      button("Check application updates", async (b) =>
+        busy(b, "Checking application updates…", async () => {
+          await post("/application-updates/check", {});
+          await applicationUpdates(panel);
+        }),
+      ),
+      button("Refresh update status", () => applicationUpdates(panel)),
+    );
+    if (status.operation?.message)
+      panel.append(el("p", status.operation.message, "notice"));
+    if (status.candidate?.changed) {
+      panel.append(el("p", "Available: " + status.candidate.version));
+      if (status.can_apply)
+        panel.append(
+          button("Review update", () =>
+            confirmAction(
+              "Install the reviewed application update?",
+              "This may restart the application during installation. The manager retains a backup and checks the runtime before reporting success.",
+              async () => {
+                await post("/application-updates/apply", {
+                  release_id: status.candidate.release_id,
+                });
+                notice(
+                  "Application update queued. Refresh its status to follow the result.",
+                );
+              },
+            ),
+          ),
+        );
+    }
   }
   async function enrollMfa() {
     const data = await post("/account/mfa/start", {}),
@@ -1142,10 +1305,45 @@
     );
     if (canWrite())
       actions.append(button("Request certificate", requestCertificate, true));
+    if (admin && canMaintain())
+      actions.append(button("Upload certificate", uploadCertificate));
     const history = await api("/servers/" + selected + "/jobs");
     const latest = history.find(
       (j) => j.kind === "certificate_inventory" && j.state === "completed",
     );
+    const staged = history.filter(
+      (j) => j.kind === "certificate_upload" && j.state === "completed",
+    );
+    for (const job of staged) {
+      const cert = job.result.result,
+        box = el("section", undefined, "panel");
+      box.append(
+        el("h2", "Uploaded: " + cert.id),
+        el("p", cert.message),
+        el("p", "Renewal: manual", "muted"),
+      );
+      if (admin && canMaintain())
+        box.append(
+          button("Review activation", () =>
+            confirmAction(
+              "Activate uploaded certificate?",
+              "PM checks active site hostname coverage, validates the traffic configuration and reloads it. The existing key pair is retained for rollback.",
+              async () => {
+                await post("/servers/" + selected + "/certificates/activate", {
+                  id: cert.id,
+                  version: cert.version,
+                  expected_sha256: cert.current_sha256,
+                  request_key: crypto.randomUUID(),
+                });
+                notice(
+                  "Certificate activation queued. Check Jobs for the confirmed result.",
+                );
+              },
+            ),
+          ),
+        );
+      root.append(box);
+    }
     const rows = latest?.result?.result;
     if (!Array.isArray(rows) || !rows.length) {
       root.append(
@@ -1169,6 +1367,20 @@
     field(f, "Certificate ID", "id");
     field(f, "Contact email", "email", session.email || "", "email");
     field(f, "Domains, one per line", "domains", "", "textarea", true);
+    const caLabel = el("label", "Certificate authority"),
+      ca = el("select");
+    ca.name = "authority";
+    for (const [value, label] of [
+      ["letsencrypt", "Let’s Encrypt"],
+      ["zerossl", "ZeroSSL (local account configuration required)"],
+      ["custom", "Custom ACME authority (local policy required)"],
+    ]) {
+      const o = el("option", label);
+      o.value = value;
+      ca.append(o);
+    }
+    caLabel.append(ca);
+    f.append(caLabel);
     const l = el("label", "Validation provider"),
       select = el("select");
     select.name = "provider";
@@ -1207,6 +1419,7 @@
           .map((s) => s.trim())
           .filter(Boolean),
         provider,
+        authority: f.elements.authority.value,
         staging: f.elements.staging.checked,
       };
       confirmAction(
@@ -1226,6 +1439,312 @@
         },
         JSON.stringify(request, null, 2),
       );
+    };
+    m.body.append(f);
+  }
+  async function fullSearch() {
+    const term = new URL(location.href).searchParams.get("q") || "",
+      f = el("form", undefined, "filter-row");
+    f.method = "get";
+    f.action = "/search";
+    const input = field(f, "Search configuration", "q", term);
+    input.maxLength = 200;
+    const submit = el("button", "Search", "button primary");
+    f.append(submit);
+    root.append(f);
+    const data = await api("/search?q=" + encodeURIComponent(term));
+    if (!data.results.length) {
+      root.append(
+        empty(
+          "No matching configuration",
+          "Try a site name, or use Quick search for navigation shortcuts.",
+        ),
+      );
+      return;
+    }
+    root.append(
+      table(
+        ["Name", "Server", "Type"],
+        data.results.map((r) => {
+          const link = el("a", r.title);
+          link.href = r.url;
+          return [link, r.description, r.type];
+        }),
+      ),
+    );
+  }
+  async function discovery() {
+    document.querySelector("#page-description").textContent =
+      "Inspect existing proxy configuration before adopting it. Discovery never changes traffic.";
+    if (!admin) {
+      root.append(
+        empty(
+          "Administrator access required",
+          "Only server administrators can discover and adopt configuration.",
+        ),
+      );
+      return;
+    }
+    if (!selected) {
+      root.append(
+        empty(
+          "Connect a server first",
+          "Discovery runs through its authenticated local agent.",
+        ),
+      );
+      return;
+    }
+    root.append(serverPicker());
+    actions.append(
+      button(
+        "Scan configuration",
+        async (b) =>
+          busy(b, "Inspecting configuration…", async () => {
+            await post("/servers/" + selected + "/discovery", {
+              request_key: crypto.randomUUID(),
+            });
+            notice(
+              "Read-only scan queued. Refresh the report when the agent responds.",
+            );
+          }),
+        true,
+      ),
+      button("Refresh report", refresh),
+      button("Compare engine", enginePreview),
+    );
+    const history = await api("/servers/" + selected + "/jobs");
+    const latest = history.find(
+      (j) => j.kind === "discovery" && j.state === "completed",
+    );
+    if (!latest) {
+      root.append(
+        empty(
+          "Review what is already running",
+          "Scan Nginx, Caddy, Apache, HAProxy and Traefik configuration. Unsupported settings stay untouched.",
+        ),
+      );
+      return;
+    }
+    const report = latest.result.result,
+      selections = new Set();
+    root.append(
+      el(
+        "p",
+        "Last inspected " + new Date(report.sampled * 1000).toLocaleString(),
+        "muted",
+      ),
+    );
+    for (const warning of report.warnings || [])
+      root.append(el("p", warning, "notice"));
+    const adopt = button(
+      "Import selected as drafts",
+      () =>
+        confirmAction(
+          "Import reviewed sites?",
+          "PM will inspect the source again. Existing traffic remains unchanged; imported sites require a separate reviewed activation.",
+          async () => {
+            await post("/servers/" + selected + "/adoptions", {
+              fingerprint: report.fingerprint,
+              selected: [...selections],
+              request_key: crypto.randomUUID(),
+            });
+            notice(
+              "Source verification queued. Imported drafts appear in Reverse proxies after successful verification.",
+            );
+          },
+        ),
+      true,
+    );
+    adopt.disabled = true;
+    for (const file of report.files || []) {
+      const panel = el("details", undefined, "panel discovery-file"),
+        summary = el("summary", file.engine.toUpperCase() + " · " + file.path);
+      panel.append(summary, el("p", "SHA-256 " + file.sha256, "muted"));
+      if (file.directives?.length)
+        panel.append(
+          el("p", "Directives: " + file.directives.join(", "), "muted"),
+        );
+      for (const warning of file.warnings || [])
+        panel.append(el("p", warning, "notice"));
+      for (const site of file.sites || []) {
+        const row = el("section", undefined, "discovery-site"),
+          label = el(
+            "label",
+            site.domains.join(", ") ||
+              site.label ||
+              "Configuration requires review",
+          ),
+          input = el("input");
+        input.type = "checkbox";
+        input.disabled = !site.supported;
+        input.onchange = () => {
+          input.checked ? selections.add(site.id) : selections.delete(site.id);
+          adopt.disabled = !selections.size;
+        };
+        label.prepend(input);
+        row.append(label);
+        if (site.resource) {
+          const detail = el(
+            "pre",
+            JSON.stringify(site.resource.settings, null, 2),
+          );
+          detail.setAttribute("aria-label", "Parsed site settings");
+          row.append(detail);
+        }
+        for (const warning of site.blockers || [])
+          row.append(el("p", warning, "notice"));
+        panel.append(row);
+      }
+      if (!file.sites?.length)
+        panel.append(
+          el(
+            "p",
+            "No independently importable site in this file. Review includes and inherited settings.",
+            "muted",
+          ),
+        );
+      root.append(panel);
+    }
+    for (const container of report.containers || [])
+      root.append(
+        el(
+          "p",
+          [
+            container.runtime,
+            container.name,
+            container.image,
+            container.adoption || container.warning,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          "notice",
+        ),
+      );
+    root.append(adopt);
+  }
+  async function enginePreview() {
+    const m = modal("Compare proxy engine"),
+      f = el("form"),
+      l = el("label", "Primary engine for this server"),
+      select = el("select");
+    const capabilities = await api("/engines");
+    for (const engine of capabilities.engines) {
+      const o = el("option", engine.label);
+      o.value = engine.id;
+      select.append(o);
+    }
+    l.append(select);
+    f.append(
+      l,
+      el(
+        "p",
+        "Compare generated configuration before an engine migration. The active engine is retained until native checks and explicit activation pass.",
+        "muted",
+      ),
+    );
+    const submit = el("button", "Generate comparison", "button primary");
+    f.append(submit);
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      await busy(submit, "Comparing engine…", async () => {
+        try {
+          const result = await post("/servers/" + selected + "/engine-plan", {
+            engine: select.value,
+          });
+          let output = m.body.querySelector(".engine-preview");
+          if (!output) {
+            output = el("div", undefined, "engine-preview");
+            m.body.append(output);
+          }
+          output.replaceChildren(
+            el(
+              "p",
+              result.activation_qualified
+                ? "Configuration preview; activation requires review."
+                : result.message,
+              "notice",
+            ),
+          );
+          for (const [name, source] of Object.entries(result.files))
+            output.append(el("h3", name), el("pre", source));
+        } catch (error) {
+          notice(error.message);
+          m.body.append(el("p", error.message, "notice"));
+        }
+      });
+    };
+    m.body.append(f);
+  }
+  function uploadCertificate() {
+    const m = modal("Upload certificate"),
+      f = el("form", undefined, "stack");
+    field(f, "Certificate ID", "id");
+    field(f, "Site hostnames, one per line", "domains", "", "textarea");
+    const cert = field(f, "Certificate PEM", "certificate", "", "file"),
+      key = field(f, "Private key PEM", "private_key", "", "file"),
+      chain = field(
+        f,
+        "Intermediate chain PEM (optional)",
+        "intermediate_chain",
+        "",
+        "file",
+      );
+    for (const input of [cert, key, chain])
+      input.accept = ".pem,.crt,.key,.cer";
+    const privateCa = field(
+      f,
+      "Private CA / self-signed certificate (clients must trust its CA)",
+      "private_ca",
+      "",
+      "checkbox",
+    );
+    cert.required = true;
+    key.required = true;
+    f.append(
+      el(
+        "p",
+        "Upload over HTTPS. Private keys are encrypted in queued work and never shown in activity logs. Uploaded certificates require manual renewal.",
+        "muted",
+      ),
+    );
+    const submit = el("button", "Validate and stage", "button primary");
+    f.append(submit);
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      await busy(submit, "Validating upload…", async () => {
+        try {
+          if (
+            cert.files[0].size + (chain.files[0]?.size || 0) > 16384 ||
+            key.files[0].size > 8192
+          )
+            throw Error("Certificate chain must fit 16 KiB and key 8 KiB.");
+          const upload = {
+            id: f.elements.id.value.trim(),
+            domains: f.elements.domains.value.split(/\s+/).filter(Boolean),
+            certificate: await cert.files[0].text(),
+            private_key: await key.files[0].text(),
+            private_ca: privateCa.checked,
+            intermediate_chain: chain.files[0]
+              ? await chain.files[0].text()
+              : "",
+          };
+          try {
+            await post("/servers/" + selected + "/certificates/upload", {
+              upload,
+              request_key: crypto.randomUUID(),
+            });
+          } finally {
+            upload.private_key = "";
+            f.reset();
+          }
+          m.dialog.close();
+          notice(
+            "Certificate validation queued. Existing traffic stays unchanged. Check Jobs for the validated result.",
+          );
+        } catch (error) {
+          m.body.prepend(el("p", error.message, "notice"));
+        }
+      });
     };
     m.body.append(f);
   }

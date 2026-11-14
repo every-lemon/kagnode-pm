@@ -1,6 +1,6 @@
 # Native deployment and legacy migration
 
-KagNode Proxy Manager 5.0.0 separates the controller, outbound agent and typed root helper. The existing management listener can remain an independent Nginx TLS frontend. Its public origin must exactly match the configured controller origin, including its port. Bind a controller behind that frontend to loopback and use `--behind-proxy`.
+KagNode. PM 5.0.0 separates the controller, outbound agent and typed root helper. The existing management listener can remain an independent Nginx TLS frontend. Its public origin must exactly match the configured controller origin, including its port. Bind a controller behind that frontend to loopback and use `--behind-proxy`.
 
 ## Before adoption
 

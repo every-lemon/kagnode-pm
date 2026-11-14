@@ -4,6 +4,7 @@ pub mod broker;
 pub mod certificates;
 pub mod core;
 pub mod domain;
+pub mod engines;
 pub mod forward;
 pub mod generated_assets;
 pub mod mfa;
@@ -13,6 +14,7 @@ pub mod packages;
 pub mod store;
 pub mod tls;
 pub mod traffic;
+pub mod updates;
 pub mod web;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

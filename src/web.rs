@@ -7,7 +7,7 @@ use crate::{
 };
 use axum::{
     Extension, Form, Json, Router,
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{delete, get, post},
@@ -139,6 +139,16 @@ pub fn router(state: App) -> Router {
         )
         .route("/api/v1/kagnode-core/{action}", post(core_action))
         .route("/api/v1/servers", get(servers))
+        .route("/api/v1/search", get(search))
+        .route("/api/v1/overview", get(overview))
+        .route(
+            "/api/v1/application-updates/status",
+            get(application_status),
+        )
+        .route(
+            "/api/v1/application-updates/{action}",
+            post(application_action),
+        )
         .route("/api/v1/enrollments", post(enrollment))
         .route("/api/v1/servers/{id}/revoke", post(revoke))
         .route(
@@ -154,9 +164,21 @@ pub fn router(state: App) -> Router {
             "/api/v1/servers/{id}/certificates/issue",
             post(certificate_issue),
         )
+        .route(
+            "/api/v1/servers/{id}/certificates/upload",
+            post(certificate_upload),
+        )
+        .route(
+            "/api/v1/servers/{id}/certificates/activate",
+            post(certificate_activate),
+        )
         .route("/api/v1/resources/{id}", delete(remove_resource))
         .route("/api/v1/servers/{id}/jobs", get(jobs))
         .route("/api/v1/servers/{id}/inspect", post(inspect_server))
+        .route("/api/v1/servers/{id}/discovery", post(discover_server))
+        .route("/api/v1/servers/{id}/adoptions", post(review_import))
+        .route("/api/v1/engines", get(engine_capabilities))
+        .route("/api/v1/servers/{id}/engine-plan", post(engine_preview))
         .route("/api/v1/servers/{id}/packages/plans", post(package_plan))
         .route("/api/v1/servers/{id}/packages/apply", post(package_apply))
         .route("/api/v1/jobs/{id}/cancel", post(cancel_job))
@@ -222,24 +244,36 @@ async fn asset(Path(file): Path<String>) -> Response {
 }
 pub fn shell(title: &str, u: Option<&User>, content: &str) -> String {
     let esc = crate::core::escape;
-    let mut navigation = if u.is_some() {
-        ["Overview","Servers","Reverse proxies","Streams","Forward proxies","Certificates","Packages","Jobs","Audit","Account"].into_iter().zip(["/","/servers","/reverse-proxies","/streams","/forward-proxies","/certificates","/packages","/jobs","/audit","/account"]).map(|(label,url)|format!("<a class=\"nav-item\" href=\"{url}\"><span data-core-icon=\"{}\"></span><span class=\"nav-label\">{label}</span></a>",match label {"Overview"=>"home","Servers"=>"compute","Reverse proxies"=>"domains","Streams"=>"networking","Forward proxies"=>"delivery","Certificates"=>"lock","Packages"=>"archive","Jobs"=>"clock","Audit"=>"observability",_=>"account"})).collect::<String>()
-    } else {
-        String::new()
-    };
-    if u.is_some_and(|u| u.role.administer()) {
-        navigation.push_str("<a class=\"nav-item\" href=\"/users\"><span data-core-icon=\"community\"></span><span class=\"nav-label\">Users and access</span></a>");
-    }
+    let mark = format!("/kagnode-core/{}/mark.svg", crate::core::version());
+    let navigation = u.map(navigation).unwrap_or_default();
+    let search_source = format!(
+        "<div hidden data-core-search-source data-endpoint=\"/api/v1/search\">{navigation}</div>"
+    );
     let sidebar = if u.is_some() {
-        format!(
-            "<aside class=\"sidebar\"><a class=\"brand\" href=\"/\"><img src=\"/kagnode-core/5.0.9/mark.svg\" alt=\"\" width=\"28\"><span class=\"brand-copy\"><strong>KagNode.</strong><small>Proxy Manager</small></span></a><nav>{navigation}</nav></aside>"
+        crate::core::template(
+            "sidebar",
+            &[],
+            &[
+                (
+                    "brand",
+                    &format!(
+                        "<a class=\"brand\" href=\"/\"><img src=\"{mark}\" alt=\"\" width=\"28\"><span class=\"brand-copy\"><strong>KagNode.</strong><small>PM</small></span></a>"
+                    ),
+                ),
+                (
+                    "navigation",
+                    &format!(
+                        "<button type=\"button\" data-command class=\"pm-search-trigger\"><span data-core-icon=\"search\"></span><span class=\"nav-label\">Quick search</span><kbd>Ctrl K</kbd></button><nav>{navigation}</nav>"
+                    ),
+                ),
+                ("footer", ""),
+            ],
         )
     } else {
         String::new()
     };
     let account = if let Some(user) = u {
-        format!(
-            "<button class=\"icon-button account-trigger\" data-core-account-trigger aria-label=\"Open account menu\">{}</button><div id=\"account-menu\" data-core-menu-content hidden><strong>{}</strong><small>{}</small><a href=\"/account\">Account and preferences</a><a href=\"/jobs\">Recent operations</a><form method=\"post\" action=\"/logout\"><input name=\"_csrf\" type=\"hidden\" value=\"{}\"><button>Sign out</button></form></div>",
+        let avatar =
             if user.photo.starts_with("data:image/webp;base64,") && user.photo.len() < 256 * 1024 {
                 format!(
                     "<img class=\"profile-photo\" src=\"{}\" alt=\"\">",
@@ -247,23 +281,44 @@ pub fn shell(title: &str, u: Option<&User>, content: &str) -> String {
                 )
             } else {
                 esc(&user.name.chars().take(1).collect::<String>())
-            },
+            };
+        let identity = format!(
+            "<strong>{}</strong><small>{}</small>",
             esc(&user.name),
-            esc(&user.email),
+            esc(&user.email)
+        );
+        let actions = format!(
+            "<a href=\"/account\">Account and preferences</a><a href=\"/jobs\">Recent operations</a><form method=\"post\" action=\"/logout\"><input name=\"_csrf\" type=\"hidden\" value=\"{}\"><button>Sign out</button></form>",
             esc(&user.csrf)
+        );
+        let menu = crate::core::template(
+            "account-menu",
+            &[],
+            &[("identity", &identity), ("actions", &actions)],
+        );
+        format!(
+            "<button class=\"icon-button account-trigger\" data-core-account-trigger aria-label=\"Open account menu\">{avatar}</button>{menu}"
         )
     } else {
         String::new()
     };
     let bootstrap = u
-        .map(|u| json!({"id":u.id,"name":u.name,"role":u.role,"csrf":u.csrf}))
+        .map(|u| json!({"id":u.id,"name":u.name,"email":u.email,"version":crate::VERSION,"role":u.role,"csrf":u.csrf}))
         .unwrap_or(json!(null))
         .to_string()
         .replace('<', "\\u003c");
+    if u.is_none() {
+        return format!(
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>{} · KagNode. PM</title>{}<link rel=\"stylesheet\" href=\"/assets/{host_css}\"><link rel=\"icon\" href=\"{mark}\" type=\"image/svg+xml\"></head><body class=\"identity-screen\">{content}</body></html>",
+            esc(title),
+            crate::core::context(false, ""),
+            host_css = crate::generated_assets::CSS_NAME
+        );
+    }
     let css = crate::generated_assets::CSS_NAME;
     let js = crate::generated_assets::JS_NAME;
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>{} · KagNode Proxy Manager</title>{}<link rel=\"icon\" href=\"/kagnode-core/5.0.9/mark.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/{css}\"><script defer src=\"/assets/{js}\"></script></head><body class=\"{}\">{sidebar}<div class=\"workspace\"><header class=\"topbar\"><div><span class=\"eyebrow\">KAGNODE PROXY MANAGER</span><span>{}</span></div>{account}</header><main id=\"main\" tabindex=\"-1\">{content}</main><footer>Self-hosted. Your servers, your control. <a href=\"https://github.com/every-lemon/kagnode-proxy-manager\">Source</a></footer></div><script type=\"application/json\" id=\"session-data\">{bootstrap}</script></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>{} · KagNode. PM</title>{}<link rel=\"icon\" href=\"{mark}\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/{css}\"><script defer src=\"/assets/{js}\"></script></head><body class=\"{}\">{sidebar}{search_source}<div class=\"workspace\"><header class=\"topbar\"><div><span class=\"eyebrow\">KAGNODE PM</span><span>{}</span></div>{account}</header><main id=\"main\" tabindex=\"-1\">{content}</main><footer>Self-hosted. Your servers, your control. <a href=\"https://github.com/every-lemon/kagnode-pm\">Source</a></footer></div><script type=\"application/json\" id=\"session-data\">{bootstrap}</script></body></html>",
         esc(title),
         crate::core::context(u.is_some(), u.map_or("", |u| &u.id)),
         if u.is_some() { "" } else { "identity-screen" },
@@ -292,6 +347,8 @@ async fn page_for(s: App, h: HeaderMap, name: String) -> Api<Response> {
         "audit" => "Audit",
         "users" => "Users and access",
         "account" => "Account",
+        "discovery" => "Discover configuration",
+        "search" => "Search",
         _ => return Err(Error(StatusCode::NOT_FOUND, "Page not found".into())),
     };
     let content = format!(
@@ -314,8 +371,33 @@ fn render_login(s: &App, error: Option<(&str, &str)>) -> Response {
             crate::core::escape(e),
         )
     });
-    let content = format!(
-        "<div class=\"login-frame\" data-core-login><section><img src=\"/kagnode-core/5.0.9/mark.svg\" width=\"42\" alt=\"KagNode\"><h1>Sign in</h1><p>Continue to Proxy Manager.</p></section>{message}<form action=\"/login\" method=\"post\" data-core-login-progressive=\"on\"><input name=\"_csrf\" type=\"hidden\" value=\"{token}\"><label>Email<input name=\"email\" type=\"email\" autocomplete=\"username\" value=\"{email}\" maxlength=\"254\" required></label><label>Password<input name=\"password\" type=\"password\" autocomplete=\"current-password\" required maxlength=\"256\"></label><button class=\"button primary\">Sign in</button></form><a class=\"button\" href=\"/auth/kagnode/start\">Login with KagNode</a><p class=\"muted\">Accounts are created by your server administrator.</p></div>"
+    let form = format!(
+        "{message}<form action=\"/login\" method=\"post\" data-core-login-progressive=\"on\"><input name=\"_csrf\" type=\"hidden\" value=\"{token}\"><label>Email<input name=\"email\" type=\"email\" autocomplete=\"username\" value=\"{email}\" maxlength=\"254\" required></label><label>Password<input name=\"password\" type=\"password\" autocomplete=\"current-password\" required maxlength=\"256\"></label><button class=\"button primary\">Sign in</button></form><p class=\"muted\">Your server administrator manages local accounts.</p>"
+    );
+    let policy: String = s
+        .store
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT value FROM settings WHERE key='kagnode_login'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| "true".into());
+    let provider = if policy == "true" {
+        "<a data-core-login-provider href=\"/auth/kagnode/start\"><span data-core-icon=\"account\"></span>Continue with KagNode</a>"
+    } else {
+        ""
+    };
+    let content = crate::core::template(
+        "login-frame",
+        &[
+            ("product", "KagNode. PM"),
+            ("heading", "Sign in"),
+            ("description", "Manage your proxy servers."),
+        ],
+        &[("content", &form), ("provider", provider)],
     );
     let mut response = Html(shell("Sign in", None, &content)).into_response();
     response.headers_mut().insert(
@@ -1069,7 +1151,11 @@ async fn poll(
 ) -> Api<Json<Value>> {
     let id = peer(&s, &p)?;
     s.store.heartbeat(&id, &data)?;
-    Ok(Json(json!({"job":s.store.claim(&id)?})))
+    let mut job = s.store.claim(&id)?;
+    if job["kind"] == "certificate_upload" {
+        job["payload"] = crate::certificates::unseal(&s.store.root, &id, &job["payload"])?;
+    }
+    Ok(Json(json!({"job":job})))
 }
 async fn heartbeat(
     State(s): State<App>,
@@ -1127,9 +1213,21 @@ async fn mfa_page(State(_s): State<App>, h: HeaderMap) -> Api<Response> {
     let token = auth::cookie(&h, "kn_proxy_mfa")
         .ok_or_else(|| anyhow::anyhow!("Verification expired; sign in again"))?;
     ensure!(token.len() == 64, "Verification expired");
-    let content = format!(
-        "<section class=\"login-frame\"><div><h1>Verify it’s you</h1><p>Enter an authenticator code or an unused recovery code.</p></div><form method=\"post\" action=\"/mfa\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><label>Verification code<input name=\"code\" autocomplete=\"one-time-code\" required maxlength=\"32\" autofocus></label><button class=\"button primary\">Continue</button><a href=\"/login\">Return to sign in</a></form></section>",
+    let form = format!(
+        "<form method=\"post\" action=\"/mfa\"><input type=\"hidden\" name=\"_csrf\" value=\"{}\"><label>Verification code<input name=\"code\" autocomplete=\"one-time-code\" required maxlength=\"32\" autofocus></label><button class=\"button primary\">Continue</button><a href=\"/login\">Return to sign in</a></form>",
         crate::core::escape(&token)
+    );
+    let content = crate::core::template(
+        "login-frame",
+        &[
+            ("product", "KagNode. PM"),
+            ("heading", "Verify it’s you"),
+            (
+                "description",
+                "Enter an authenticator code or an unused recovery code.",
+            ),
+        ],
+        &[("content", &form), ("provider", "")],
     );
     Ok(Html(shell("Verify your account", None, &content)).into_response())
 }
@@ -1328,7 +1426,7 @@ async fn core_action(
     let fields: &[&str] = match action.as_str() {
         "check" | "rollback" => &[],
         "apply" => &["release_id"],
-        "policy" => &["automatic", "summaries"],
+        "policy" => &["automatic", "summaries", "channel"],
         _ => return Err(Error(StatusCode::NOT_FOUND, "Unknown Core action".into())),
     };
     ensure!(
@@ -1341,6 +1439,12 @@ async fn core_action(
         if let Some(value) = input.get(name) {
             ensure!(value.is_boolean(), "Core policy values must be booleans");
         }
+    }
+    if let Some(channel) = input.get("channel") {
+        ensure!(
+            matches!(channel.as_str(), Some("stable" | "beta")),
+            "Choose Stable or Beta"
+        );
     }
     if action == "apply" {
         ensure!(
@@ -1397,4 +1501,274 @@ async fn core_notice_dismiss(
         params![u.id, input.id, now()],
     )?;
     Ok(Json(json!({"dismissed":true})))
+}
+
+async fn engine_capabilities(State(s): State<App>, h: HeaderMap) -> Api<Json<Value>> {
+    let _ = user(&s, &h, false)?;
+    Ok(Json(crate::engines::capabilities()))
+}
+async fn discover_server(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<Key>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    admin(&u)?;
+    allowed(&s, &u, &id, true, true)?;
+    let job = s
+        .store
+        .enqueue(&u.id, &id, "discovery", json!({}), &input.request_key)?;
+    s.store
+        .audit(&u.id, "discovery.request", &id, json!({"job":job}))?;
+    Ok(Json(json!({"job":job,"state":"queued","read_only":true})))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImportReview {
+    fingerprint: String,
+    selected: Vec<String>,
+    request_key: String,
+}
+async fn review_import(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<ImportReview>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    admin(&u)?;
+    auth::recent(&u)?;
+    allowed(&s, &u, &id, true, true)?;
+    ensure!(
+        input.fingerprint.len() == 64
+            && input.fingerprint.bytes().all(|b| b.is_ascii_hexdigit())
+            && !input.selected.is_empty()
+            && input.selected.len() <= 32,
+        "Select a bounded configuration review"
+    );
+    let job = s.store.enqueue(
+        &u.id,
+        &id,
+        "import_review",
+        json!({"fingerprint":input.fingerprint,"selected":input.selected}),
+        &input.request_key,
+    )?;
+    s.store
+        .audit(&u.id, "adoption.review", &id, json!({"job":job}))?;
+    Ok(Json(
+        json!({"job":job,"state":"queued","traffic_changed":false}),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UploadCertificate {
+    upload: crate::certificates::Upload,
+    request_key: String,
+}
+async fn certificate_upload(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(server): Path<String>,
+    Json(input): Json<UploadCertificate>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    admin(&u)?;
+    auth::recent(&u)?;
+    allowed(&s, &u, &server, true, true)?;
+    input.upload.validate()?;
+    let value = serde_json::to_value(&input.upload)?;
+    let prior: Option<(String, String, String, String)> = s
+        .store
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT id,actor,server,payload FROM jobs WHERE request_key=?",
+            [&input.request_key],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .ok();
+    if let Some((job, actor, node, payload)) = prior {
+        ensure!(
+            actor == u.id
+                && node == server
+                && crate::certificates::unseal(
+                    &s.store.root,
+                    &server,
+                    &serde_json::from_str::<Value>(&payload)?
+                )? == value,
+            "Idempotency key belongs to a different upload"
+        );
+        return Ok(Json(json!({"job":job,"state":"queued"})));
+    }
+    let sealed = crate::certificates::sealed(&s.store.root, &server, &value)?;
+    let job = s.store.enqueue(
+        &u.id,
+        &server,
+        "certificate_upload",
+        sealed,
+        &input.request_key,
+    )?;
+    s.store.audit(
+        &u.id,
+        "certificate.upload",
+        &server,
+        json!({"id":input.upload.id,"job":job,"private_key":"not_recorded"}),
+    )?;
+    Ok(Json(
+        json!({"job":job,"state":"queued","traffic_changed":false}),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EnginePreview {
+    engine: crate::engines::Engine,
+}
+async fn engine_preview(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(server): Path<String>,
+    Json(input): Json<EnginePreview>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    admin(&u)?;
+    allowed(&s, &u, &server, true, true)?;
+    let rows = s.store.resources(&server)?;
+    let resources = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            Ok((
+                r["id"].as_str().unwrap().to_string(),
+                serde_json::from_value::<Resource>(r["settings"].clone())?,
+            ))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let result = crate::engines::render(
+        input.engine,
+        &resources,
+        "/srv/kagnode/proxy-manager/traffic",
+    )?;
+    Ok(Json(result))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivateCertificate {
+    id: String,
+    version: String,
+    expected_sha256: String,
+    request_key: String,
+}
+async fn certificate_activate(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(server): Path<String>,
+    Json(input): Json<ActivateCertificate>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    admin(&u)?;
+    auth::recent(&u)?;
+    allowed(&s, &u, &server, true, true)?;
+    crate::domain::ident(&input.id)?;
+    crate::domain::ident(&input.version)?;
+    let job = s.store.enqueue(
+        &u.id,
+        &server,
+        "certificate_activate",
+        json!({"id":input.id,"version":input.version,"expected_sha256":input.expected_sha256}),
+        &input.request_key,
+    )?;
+    s.store.audit(
+        &u.id,
+        "certificate.activate",
+        &server,
+        json!({"id":input.id,"job":job}),
+    )?;
+    Ok(Json(json!({"job":job,"state":"queued"})))
+}
+
+fn navigation(user: &User) -> String {
+    [("Overview","/","home",false),("Servers","/servers","compute",false),("Reverse proxies","/reverse-proxies","domains",false),("Streams","/streams","networking",false),("Forward proxies","/forward-proxies","delivery",false),("Certificates","/certificates","lock",false),("Packages","/packages","archive",false),("Jobs","/jobs","clock",false),("Discovery","/discovery","search",true),("Audit","/audit","observability",true),("Users and access","/users","community",true),("Account","/account","account",false)].into_iter().filter(|(_,_,_,admin)| !admin || user.role.administer()).map(|(label,url,icon,_)|format!("<a class=\"nav-item\" href=\"{url}\"><span data-core-icon=\"{icon}\"></span><span class=\"nav-label\">{label}</span></a>")).collect()
+}
+#[derive(Deserialize)]
+struct SearchQuery {
+    #[serde(default)]
+    q: String,
+}
+async fn search(
+    State(s): State<App>,
+    h: HeaderMap,
+    Query(input): Query<SearchQuery>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, false)?;
+    ensure!(
+        input.q.len() <= 200 && !input.q.chars().any(char::is_control),
+        "Search text must be at most 200 characters"
+    );
+    let q = input.q.trim().to_lowercase();
+    let nodes = s.store.servers(&u.id, &u.role)?;
+    let db = s.store.db.lock().unwrap();
+    let mut query=db.prepare("SELECT r.id,r.server,r.name,r.kind,s.name FROM resources r JOIN servers s ON s.id=r.server WHERE r.deleted=0 AND s.revoked=0 AND (?1 OR EXISTS(SELECT 1 FROM server_permissions p WHERE p.server=s.id AND p.user=?2 AND p.role IN ('viewer','maintainer'))) AND instr(lower(r.name),?3)>0 ORDER BY r.name LIMIT 30")?;
+    let mut results=query.query_map(params![u.role.administer(),u.id,q],|r|{let id:String=r.get(0)?;let server:String=r.get(1)?;let kind:String=r.get(3)?;let path=match kind.as_str(){"stream"=>"streams","forward_proxy"=>"forward-proxies",_=>"reverse-proxies"};Ok(json!({"id":id,"title":r.get::<_,String>(2)?,"description":r.get::<_,String>(4)?,"type":"Configuration","url":format!("/{path}?server={server}")}))})?.collect::<std::result::Result<Vec<_>,_>>()?;
+    for node in nodes
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|n| n["name"].as_str().unwrap_or("").to_lowercase().contains(&q))
+        .take(10)
+    {
+        results.push(json!({"id":node["id"],"title":node["name"],"description":"Managed server","type":"Server","url":format!("/reverse-proxies?server={}",node["id"].as_str().unwrap())}));
+    }
+    Ok(Json(
+        json!({"results":results,"moreUrl":format!("/search?q={}",percent_encoding::utf8_percent_encode(&input.q,percent_encoding::NON_ALPHANUMERIC))}),
+    ))
+}
+async fn overview(State(s): State<App>, h: HeaderMap) -> Api<Json<Value>> {
+    let u = user(&s, &h, false)?;
+    let db = s.store.db.lock().unwrap();
+    let drafts:i64=db.query_row("SELECT COUNT(*) FROM resources r JOIN servers s ON s.id=r.server WHERE s.revoked=0 AND ((r.deleted=0 AND r.revision!=r.published) OR (r.deleted=1 AND r.published>0)) AND (?1 OR EXISTS(SELECT 1 FROM server_permissions p WHERE p.server=s.id AND p.user=?2 AND p.role IN ('viewer','maintainer')))",params![u.role.administer(),u.id],|r|r.get(0))?;
+    let mut query=db.prepare("SELECT j.id,j.kind,j.state,j.updated,s.name FROM jobs j JOIN servers s ON s.id=j.server WHERE s.revoked=0 AND (?1 OR EXISTS(SELECT 1 FROM server_permissions p WHERE p.server=s.id AND p.user=?2 AND p.role IN ('viewer','maintainer'))) ORDER BY j.updated DESC LIMIT 10")?;
+    let jobs=query.query_map(params![u.role.administer(),u.id],|r|Ok(json!({"id":r.get::<_,String>(0)?,"kind":r.get::<_,String>(1)?,"state":r.get::<_,String>(2)?,"updated":r.get::<_,i64>(3)?,"server":r.get::<_,String>(4)?})))?.collect::<std::result::Result<Vec<_>,_>>()?;
+    Ok(Json(json!({"draft_changes":drafts,"recent_jobs":jobs})))
+}
+
+async fn application_status(State(s): State<App>, h: HeaderMap) -> Api<Json<Value>> {
+    let u = user(&s, &h, false)?;
+    admin(&u)?;
+    Ok(Json(crate::updates::request("state", json!({})).await?))
+}
+async fn application_action(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(action): Path<String>,
+    Json(input): Json<Value>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    admin(&u)?;
+    auth::recent(&u)?;
+    let fields: &[&str] = match action.as_str() {
+        "check" => &[],
+        "apply" => &["release_id"],
+        "policy" => &["channel", "mode", "window", "revision"],
+        _ => return Err(Error(StatusCode::NOT_FOUND, "Unknown update action".into())),
+    };
+    ensure!(
+        input
+            .as_object()
+            .is_some_and(|v| v.keys().all(|key| fields.contains(&key.as_str()))),
+        "Unexpected update parameters"
+    );
+    let value = crate::updates::request(&action, input).await?;
+    s.store.audit(
+        &u.id,
+        &format!("application.update.{action}"),
+        "proxy-manager",
+        json!({}),
+    )?;
+    Ok(Json(value))
 }

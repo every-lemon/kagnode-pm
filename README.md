@@ -1,6 +1,6 @@
 <p align="center"><img src="vendor/core/mark.svg" width="64" alt="KagNode."></p>
 
-# KagNode. Proxy Manager
+# KagNode. PM
 
 ## Overview
 
@@ -19,13 +19,15 @@ The repository distinguishes implemented functions from verification still requi
 - Local accounts, MFA/recovery codes, node permissions, revision checks and audit records.
 - KagNode Core presentation, served locally with an embedded fallback.
 - Dependency-aware package-removal previews and a restricted local execution helper.
-- Read-only import previews for the previous Nginx manager.
+- Read-only discovery for Nginx, Caddy, Apache, HAProxy and Traefik, with source review and verified draft import.
+- Canonical Core login/sidebar/account presentation and permission-filtered quick search.
+- Independent ACME authority/validation selection and encrypted queued certificate upload.
 
 Full capability and native-qualification status is recorded in the delivery checklist; listing a feature does not imply its native runtime is qualified.
 
 ## Requirements
 
-Target systems: Ubuntu 24.04 or Debian 13, Linux amd64/arm64 with systemd. Nginx handles reverse traffic; forward listeners additionally require a qualified 3proxy build. Package inspection/transactions use distribution `python3-apt` transiently. Development requires Rust 1.88+, a C compiler and OpenSSL. Node.js 24 is used only when regenerating web assets; it is not a server runtime dependency.
+Target systems: Ubuntu 24.04 or Debian 13, Linux amd64/arm64 with systemd. Nginx is the qualified native reverse engine; alternative-engine configuration previews reject unsupported policies and remain gated from native activation. forward listeners additionally require a qualified 3proxy build. Package inspection/transactions use distribution `python3-apt` transiently. Development requires Rust 1.88+, a C compiler and OpenSSL. Node.js 24 is used only when regenerating web assets; it is not a server runtime dependency.
 
 ## Installation and downloads
 
@@ -61,6 +63,8 @@ Native package removal and proxy activation are tested only in disposable system
 
 ## Documentation
 
+- [Configuration discovery and engine comparison](docs/DISCOVERY.md)
+- [Certificate authorities and uploads](docs/CERTIFICATES.md)
 - [Native deployment and legacy migration](docs/MIGRATION.md)
 - [Delivery and verification checklist](docs/DELIVERY.md)
 - [Repository map](docs/STRUCTURE.md)

@@ -19,7 +19,7 @@ for (const extension of ["js", "css"]) {
       legalComments: "inline",
       target: ["es2022"],
       banner:
-        "/* KagNode Proxy Manager · AGPL-3.0-only · github.com/every-lemon/kagnode-proxy-manager */",
+        "/* KagNode. PM · AGPL-3.0-only · github.com/every-lemon/kagnode-pm */",
     },
   );
   const digest = createHash("sha256")

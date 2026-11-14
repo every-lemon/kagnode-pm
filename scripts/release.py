@@ -274,7 +274,7 @@ def application_packages(source, binary, arch, version, out, epoch):
                 ROOT / "scripts/package_transaction.py",
             ),
         ]
-        archives(payload, f"kagnode-proxy-manager_{version}_linux_{arch}", out, epoch)
+        archives(payload, f"kagnode-pm_{version}_linux_{arch}", out, epoch)
         root = stage / "deb"
         base = root / "usr/lib/kagnode-proxy-manager"
         for name, path in payload:
@@ -287,10 +287,13 @@ def application_packages(source, binary, arch, version, out, epoch):
         (links / "kagnode-proxy-manager").symlink_to(
             "../lib/kagnode-proxy-manager/bin/kagnode-proxy-manager"
         )
+        (links / "kagnode-pm").symlink_to(
+            "../lib/kagnode-proxy-manager/bin/kagnode-proxy-manager"
+        )
         metadata = root / "DEBIAN"
         metadata.mkdir()
         (metadata / "control").write_text(
-            f"Package: kagnode-proxy-manager\nVersion: {version}\nArchitecture: {arch}\nMaintainer: KagNode contributors <every-lemon@users.noreply.github.com>\nSection: admin\nPriority: optional\nDepends: libc6 (>= 2.39), libgcc-s1, ca-certificates, openssl, python3 (>= 3.11), python3-apt\nRecommends: nginx, libnginx-mod-stream, certbot\nDescription: KagNode Proxy Manager native controller, agent and setup tools\n Native setup is an explicit reviewed operation. Installing, upgrading or\n removing this package never changes existing instances or user data.\n"
+            f"Package: kagnode-proxy-manager\nVersion: {version}\nArchitecture: {arch}\nMaintainer: KagNode contributors <every-lemon@users.noreply.github.com>\nSection: admin\nPriority: optional\nDepends: libc6 (>= 2.39), libgcc-s1, ca-certificates, openssl, python3 (>= 3.11), python3-apt\nRecommends: nginx, libnginx-mod-stream, certbot\nDescription: KagNode. PM native controller, agent and setup tools\n Native setup is an explicit reviewed operation. Installing, upgrading or\n removing this package never changes existing instances or user data.\n"
         )
         for path in [root, *root.rglob("*")]:
             if path.is_dir():

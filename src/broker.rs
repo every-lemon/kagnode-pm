@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
     PackagePreview {
@@ -20,7 +20,20 @@ pub enum Operation {
         request: crate::certificates::Request,
     },
     CertificateInventory {},
+    CertificateUpload {
+        upload: crate::certificates::Upload,
+    },
+    CertificateActivate {
+        id: String,
+        version: String,
+        expected_sha256: String,
+    },
     Status {},
+    Discover {},
+    ReviewImport {
+        fingerprint: String,
+        selected: Vec<String>,
+    },
     Reconcile {},
 }
 pub async fn request(socket: &Path, operation: &Operation) -> Result<Value> {
@@ -258,11 +271,28 @@ pub async fn execute(root: &Path, operation: Operation) -> Result<Value> {
             std::fs::File::open(root)?.sync_all()?;
             Ok(result)
         }
+        Operation::Discover {} => discovery_worker("discover", json!({})).await,
+        Operation::ReviewImport {
+            fingerprint,
+            selected,
+        } => {
+            discovery_worker(
+                "review",
+                json!({"fingerprint":fingerprint,"selected":selected}),
+            )
+            .await
+        }
         Operation::Configure { resources } => activate(root, &resources).await,
         Operation::CertificateIssue { request } => crate::certificates::issue(root, request).await,
+        Operation::CertificateActivate {
+            id,
+            version,
+            expected_sha256,
+        } => crate::certificates::activate_uploaded(root, &id, &version, &expected_sha256).await,
+        Operation::CertificateUpload { upload } => crate::certificates::upload(root, upload).await,
         Operation::CertificateInventory {} => crate::certificates::inventory(root).await,
         Operation::Status {} => Ok(
-            json!({"current":std::fs::read_link(root.join("current")).ok().map(|p|p.to_string_lossy().to_string()),"pending":root.join("activation.json").exists(),"package_recovery_required":root.join("package-operation.json").exists(),"last_package_receipt":std::fs::read(root.join("last-package-operation.json")).ok().and_then(|v|serde_json::from_slice::<Value>(&v).ok())}),
+            json!({"current":std::fs::read_link(root.join("current")).ok().map(|p|p.to_string_lossy().to_string()),"pending":root.join("activation.json").exists() || root.join("certificate-activation.json").exists(),"package_recovery_required":root.join("package-operation.json").exists(),"last_package_receipt":std::fs::read(root.join("last-package-operation.json")).ok().and_then(|v|serde_json::from_slice::<Value>(&v).ok())}),
         ),
         Operation::Reconcile {} => {
             if !root.join("activation.json").exists() {
@@ -292,4 +322,57 @@ async fn drain(reader: impl tokio::io::AsyncRead + Unpin, limit: usize) -> Resul
 }
 pub async fn activate(root: &Path, resources: &[(String, Resource)]) -> Result<Value> {
     crate::traffic::configure(root, resources).await
+}
+
+async fn discovery_worker(action: &str, input: Value) -> Result<Value> {
+    let source = if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/discover_config.py")
+    } else {
+        PathBuf::from("/usr/libexec/kagnode-proxy-manager/discover_config.py")
+    };
+    crate::traffic::trusted_directory(source.parent().unwrap())?;
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::symlink_metadata(&source)?;
+    ensure!(
+        meta.is_file()
+            && !meta.file_type().is_symlink()
+            && meta.uid() == 0
+            && meta.mode() & 0o022 == 0,
+        "Untrusted discovery helper"
+    );
+    let mut child = tokio::process::Command::new("/usr/bin/python3")
+        .arg("-I")
+        .arg(source)
+        .arg(action)
+        .env_clear()
+        .env("PATH", "/usr/sbin:/usr/bin:/sbin:/bin")
+        .env("LC_ALL", "C")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&serde_json::to_vec(&input)?)
+        .await?;
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let (status, out, err) = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        tokio::join!(child.wait(), drain(stdout, 65537), drain(stderr, 2000))
+    })
+    .await?;
+    ensure!(
+        status?.success(),
+        "Discovery needs review: {}",
+        String::from_utf8_lossy(&err?)
+    );
+    let bytes = out?;
+    ensure!(
+        bytes.len() <= 65536,
+        "Discovery report exceeds the supported limit"
+    );
+    Ok(serde_json::from_slice(&bytes)?)
 }

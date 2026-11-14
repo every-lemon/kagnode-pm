@@ -3,7 +3,7 @@ use axum::{
     http::{StatusCode, header},
     response::IntoResponse,
 };
-pub const CORE_VERSION: &str = "5.0.9";
+pub const CORE_VERSION: &str = "5.0.10";
 fn sdk() -> &'static kagnode_core::Core {
     static SDK: std::sync::OnceLock<kagnode_core::Core> = std::sync::OnceLock::new();
     SDK.get_or_init(|| {
@@ -91,4 +91,10 @@ pub async fn asset(
             Vec::new(),
         ),
     }
+}
+
+pub fn template(name: &str, text: &[(&str, &str)], html: &[(&str, &str)]) -> String {
+    sdk()
+        .template(name, text, html)
+        .expect("checked canonical Core template parameters")
 }

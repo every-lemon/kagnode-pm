@@ -349,6 +349,39 @@ impl Store {
                 }
             }
         }
+        if state == "completed" {
+            let (kind, actor): (String, String) =
+                tx.query_row("SELECT kind,actor FROM jobs WHERE id=?", [id], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })?;
+            if kind == "import_review" {
+                let resources = outcome["result"]["resources"]
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("Missing reviewed resources"))?;
+                ensure!(
+                    !resources.is_empty() && resources.len() <= 32,
+                    "Invalid reviewed resource count"
+                );
+                for row in resources {
+                    let name = row["name"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("Missing import name"))?;
+                    crate::domain::ident(name)?;
+                    let resource: Resource = serde_json::from_value(row["resource"].clone())?;
+                    resource.validate()?;
+                    let key = digest(format!("{server}:{name}"));
+                    let value = serde_json::to_string(&resource)?;
+                    let inserted=tx.execute("INSERT INTO resources(id,server,name,kind,settings) VALUES(?,?,?,'proxy_host',?) ON CONFLICT(server,name) DO NOTHING",params![key,server,name,value])?;
+                    if inserted == 1 {
+                        tx.execute(
+                            "INSERT INTO revisions VALUES(?,1,?,?,?)",
+                            params![key, value, actor, now()],
+                        )?;
+                    }
+                }
+                tx.execute("INSERT INTO audit(actor,action,target,detail,created) VALUES(?,'adoption.drafts',?,?,?)",params![actor,server,json!({"job":id,"traffic_changed":false}).to_string(),now()])?;
+            }
+        }
         tx.commit()?;
         Ok(())
     }

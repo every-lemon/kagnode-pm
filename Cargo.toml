@@ -1,10 +1,10 @@
 [package]
 name = "kagnode-proxy-manager"
-version = "5.0.0"
+version = "5.0.1"
 edition = "2024"
 rust-version = "1.88"
 license = "AGPL-3.0-only"
-repository = "https://github.com/every-lemon/kagnode-proxy-manager"
+repository = "https://github.com/every-lemon/kagnode-pm"
 description = "A resource-conscious multi-server reverse and forward proxy manager"
 
 [dependencies]
@@ -21,9 +21,10 @@ hyper = { version = "1", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio", "service"] }
 ipnet = { version = "2", features = ["serde"] }
 libc = "0.2"
-kagnode-core = { path = "vendor/core-rust", version = "5.0.9" }
+kagnode-core = { path = "vendor/core-rust", version = "5.0.10" }
 percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+ring = "0.17"
 rusqlite = { version = "0.38", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pemfile = "2"

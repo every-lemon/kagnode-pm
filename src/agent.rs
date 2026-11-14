@@ -228,6 +228,8 @@ async fn tick(config: &AgentConfig, client: &reqwest::Client, active: &ActiveJob
                 Operation::Configure { .. }
                     | Operation::PackageRemove { .. }
                     | Operation::CertificateIssue { .. }
+                    | Operation::CertificateUpload { .. }
+                    | Operation::CertificateActivate { .. }
             );
             (
                 crate::broker::request(&config.broker_socket, &operation).await,
@@ -266,8 +268,27 @@ fn operation(job: &Value) -> Result<Operation> {
         Some("certificate_issue") => Operation::CertificateIssue {
             request: serde_json::from_value(job["payload"]["request"].clone())?,
         },
+        Some("certificate_activate") => Operation::CertificateActivate {
+            id: job["payload"]["id"].as_str().unwrap_or("").into(),
+            version: job["payload"]["version"].as_str().unwrap_or("").into(),
+            expected_sha256: job["payload"]["expected_sha256"]
+                .as_str()
+                .unwrap_or("")
+                .into(),
+        },
+        Some("certificate_upload") => Operation::CertificateUpload {
+            upload: serde_json::from_value(job["payload"].clone())?,
+        },
         Some("certificate_inventory") => Operation::CertificateInventory {},
         Some("status") => Operation::Status {},
+        Some("discovery") => Operation::Discover {},
+        Some("import_review") => Operation::ReviewImport {
+            fingerprint: job["payload"]["fingerprint"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("Missing review fingerprint"))?
+                .into(),
+            selected: serde_json::from_value(job["payload"]["selected"].clone())?,
+        },
         _ => anyhow::bail!("Unsupported typed job"),
     })
 }
