@@ -9,3 +9,7 @@
 - `packaging/`: committed source allowlist and package metadata. `scripts/release.py` builds normalized archives, Debian packages and source-only RPMs from committed source.
 - `docs/`: operations, security boundaries, qualification results and migration procedures.
 - `target/`, `dist/` and runtime databases: generated/private, excluded from source publication.
+
+## Repository identity
+
+The canonical repository is [every-lemon/kagnode-proxy](https://github.com/every-lemon/kagnode-proxy). `packaging/release.json` keeps `repository: kagnode-pm` as the archive/package prefix and records the canonical source separately as `source_repository`. New release manifests and RPM source URLs use the canonical repository; existing signed manifests and package/service identities are not rewritten.

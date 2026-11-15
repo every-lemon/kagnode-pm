@@ -199,7 +199,7 @@ Version: {rpmversion}
 Release: 1
 Summary: KagNode Proxy Manager source distribution
 License: {license_id}
-URL: https://github.com/every-lemon/{config()["repository"]}
+URL: https://github.com/every-lemon/{config().get("source_repository", config()["repository"])}
 BuildArch: {rpmarch}
 AutoReqProv: no
 {"Recommends: python3 >= 3.10" if binary else ""}
@@ -374,7 +374,7 @@ def build(out, binaries=None):
         )
     manifest = {
         "schema": 1,
-        "repository": "every-lemon/" + cfg["repository"],
+        "repository": "every-lemon/" + cfg.get("source_repository", cfg["repository"]),
         "version": version,
         "product_version": product,
         "source_commit": head,

@@ -6,5 +6,6 @@
   "license": "AGPL-3.0-only",
   "revision": 1,
   "channel": "stable",
-  "native_publication": "Blocked until docs/DELIVERY.md qualification gates pass"
+  "native_publication": "Blocked until docs/DELIVERY.md qualification gates pass",
+  "source_repository": "kagnode-proxy"
 }

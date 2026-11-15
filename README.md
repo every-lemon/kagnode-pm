@@ -33,6 +33,8 @@ Target systems: Ubuntu 24.04 or Debian 13, Linux amd64/arm64 with systemd. Nginx
 
 ## Installation and downloads
 
+Canonical source: [every-lemon/kagnode-proxy](https://github.com/every-lemon/kagnode-proxy). The previous repository URL redirects here. Existing `kagnode-pm` package, command and service identifiers remain compatible.
+
 Release formats include application `.deb`, `.tar.xz`, `.tar.gz` and `.zip`, plus corresponding source archives. RPM is source/data only; Rocky Linux native operation is outside the supported platform matrix.
 
 | Platform     | Architecture           | Application/native status                                     |
