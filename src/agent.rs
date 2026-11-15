@@ -112,7 +112,7 @@ pub fn client(config: &AgentConfig) -> Result<reqwest::Client> {
 }
 type ActiveJob = std::sync::Arc<tokio::sync::Mutex<Option<(String, String)>>>;
 fn heartbeat_data(active: Option<(String, String)>) -> Value {
-    json!({"version":crate::VERSION,"summary":summary(),"active_job":active.map(|(id,lease)|json!({"id":id,"lease":lease})),"capabilities":{"package_removal":Path::new("/etc/kagnode/proxy-manager/allow-package-removal").is_file(),"nginx":Path::new("/usr/sbin/nginx").is_file(),"forward_proxy":crate::traffic::engine().is_ok(),"platform":std::fs::read_to_string("/etc/os-release").unwrap_or_default().lines().filter(|l|l.starts_with("ID=")||l.starts_with("VERSION_ID=")).collect::<Vec<_>>().join(" ")}})
+    json!({"version":crate::VERSION,"summary":summary(),"active_job":active.map(|(id,lease)|json!({"id":id,"lease":lease})),"capabilities":{"upstream_probe":true,"package_removal":Path::new("/etc/kagnode/proxy-manager/allow-package-removal").is_file(),"nginx":Path::new("/usr/sbin/nginx").is_file(),"forward_proxy":crate::traffic::engine().is_ok(),"platform":std::fs::read_to_string("/etc/os-release").unwrap_or_default().lines().filter(|l|l.starts_with("ID=")||l.starts_with("VERSION_ID=")).collect::<Vec<_>>().join(" ")}})
 }
 pub async fn run(config: AgentConfig) -> Result<()> {
     let client = client(&config)?;
@@ -220,22 +220,31 @@ async fn tick(config: &AgentConfig, client: &reqwest::Client, active: &ActiveJob
         json!({"id":id,"lease":lease,"started":crate::now(),"outcome":null,"acknowledged":false});
     crate::private_write(&path, &serde_json::to_vec(&record)?)?;
     *active.lock().await = Some((id.into(), lease.into()));
-    let operation = operation(job);
-    let (result, mutation) = match operation {
-        Ok(operation) => {
-            let mutation = matches!(
-                operation,
-                Operation::Configure { .. }
-                    | Operation::PackageRemove { .. }
-                    | Operation::CertificateIssue { .. }
-                    | Operation::CertificateActivate { .. }
-            );
-            (
-                crate::broker::request(&config.broker_socket, &operation).await,
-                mutation,
-            )
+    let (result, mutation) = if job["kind"] == "probe_upstreams" {
+        let result = match serde_json::from_value::<crate::domain::Resource>(
+            job["payload"]["resource"].clone(),
+        ) {
+            Ok(resource) => crate::probe::check(&resource).await,
+            Err(error) => Err(error.into()),
+        };
+        (result, false)
+    } else {
+        match operation(job) {
+            Ok(operation) => {
+                let mutation = matches!(
+                    operation,
+                    Operation::Configure { .. }
+                        | Operation::PackageRemove { .. }
+                        | Operation::CertificateIssue { .. }
+                        | Operation::CertificateActivate { .. }
+                );
+                (
+                    crate::broker::request(&config.broker_socket, &operation).await,
+                    mutation,
+                )
+            }
+            Err(error) => (Err(error), false),
         }
-        Err(error) => (Err(error), false),
     };
     record["outcome"] = match result {
         Ok(result)

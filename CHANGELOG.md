@@ -1,3 +1,9 @@
+## 5.0.3
+
+- Adopt Core form dialogs with one close control and guarded Cancel behavior.
+- Add bounded node-side TCP upstream reachability with permission, revision, capability and rate-limit checks.
+- Report connectivity separately from application health; no HTTP request or root helper is used for probes.
+
 # 5.0.2
 
 - Replace raw proxy editing with grouped routing, upstream, TLS, access and advanced controls; preserve weighted/backup peers and existing settings.

@@ -1,8 +1,8 @@
 {
-  "title": "Shared login and update channels",
+  "title": "Clearer navigation and movable dialogs",
   "items": [
-    "Applications can use the canonical Core login and navigation templates.",
-    "Administrators can independently choose Stable or Beta and automatic or manual Core UI updates.",
-    "Signed compatible UI updates retain offline fallback and rollback."
+    "Collapsed Quick Search stays centered inside the sidebar.",
+    "Dialog forms have an accessible close control, viewport-bounded desktop dragging and unsaved-change confirmation.",
+    "Disclosure carets point down and animate upward when expanded."
   ]
 }

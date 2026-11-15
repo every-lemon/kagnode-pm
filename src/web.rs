@@ -166,6 +166,7 @@ pub fn router(state: App) -> Router {
             get(publication_review),
         )
         .route("/api/v1/resources/{id}/history", get(resource_history))
+        .route("/api/v1/resources/{id}/reachability", post(probe_upstreams))
         .route("/api/v1/resources/{id}/restore", post(restore_resource))
         .route(
             "/api/v1/servers/{id}/retired-resources",
@@ -1482,7 +1483,7 @@ async fn certificate_issue(
 async fn core_status(State(s): State<App>, h: HeaderMap) -> Api<Json<Value>> {
     let u = user(&s, &h, false)?;
     admin(&u)?;
-    let value=crate::core::manager("status".into(),json!({})).await.unwrap_or_else(|_|json!({"enabled":false,"version":crate::core::version(),"message":"Enable reviewed Core management through KagNode CLI on this server."}));
+    let value=crate::core::manager("status".into(),json!({})).await.unwrap_or_else(|_|json!({"enabled":false,"version":crate::core::version(),"message":"Enable reviewed Core management through KagNode Daemon on this server."}));
     Ok(Json(value))
 }
 async fn core_action(
@@ -1842,4 +1843,37 @@ async fn application_action(
         json!({}),
     )?;
     Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProbeInput {
+    request_key: String,
+    revision: i64,
+}
+async fn probe_upstreams(
+    State(s): State<App>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<ProbeInput>,
+) -> Api<Json<Value>> {
+    let u = user(&s, &h, true)?;
+    let server: String = s
+        .store
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT server FROM resources WHERE id=? AND deleted=0",
+            [&id],
+            |r| r.get(0),
+        )
+        .map_err(|_| anyhow::anyhow!("Resource unavailable"))?;
+    allowed(&s, &u, &server, true, false)?;
+    let job =
+        s.store
+            .queue_upstream_probe(&u.id, &server, &id, input.revision, &input.request_key)?;
+    Ok(Json(
+        json!({"job":job,"state":"queued","read_only":true,"application_health_verified":false}),
+    ))
 }

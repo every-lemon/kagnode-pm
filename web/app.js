@@ -104,10 +104,7 @@ import { createProxyUI } from "./proxies.js";
     const heading = el("h2", title);
     heading.id = "dialog-" + crypto.randomUUID();
     d.setAttribute("aria-labelledby", heading.id);
-    header.append(
-      heading,
-      button("Close", () => d.close()),
-    );
+    header.append(heading);
     d.append(header, body);
     document.body.append(d);
     d.addEventListener("close", () => d.remove(), { once: true });
@@ -366,6 +363,7 @@ import { createProxyUI } from "./proxies.js";
     refresh,
     table,
     getServer: () => selected,
+    getServers: () => servers,
     canWrite,
   });
   async function resourcePage() {
