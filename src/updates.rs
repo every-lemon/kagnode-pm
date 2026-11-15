@@ -10,7 +10,7 @@ pub async fn request(action: &str, input: Value) -> Result<Value> {
     let action = action.to_string();
     tokio::task::spawn_blocking(move|| {
         let socket=std::path::Path::new("/srv/kagnode/run/proxy-manager.sock");
-        if !socket.exists() && action=="state" {return Ok(json!({"enabled":false,"message":"Enable the local application update manager with KagNode CLI on this server."}));}
+        if !socket.exists() && action=="state" {return Ok(json!({"enabled":false,"message":"Enable the local application update manager with KagNode Daemon on this server."}));}
         let mut stream=std::os::unix::net::UnixStream::connect(socket).map_err(|_|anyhow::anyhow!("The local application update manager is unavailable"))?;
         stream.set_read_timeout(Some(std::time::Duration::from_secs(45)))?;stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
         let mut value=input.as_object().cloned().ok_or_else(||anyhow::anyhow!("Update parameters must be an object"))?;

@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "version": "5.0.12",
+  "source_commit": "10a25c0095446b34aae367d15bf49a7d5fc8d9dc",
+  "packages": [
+    {
+      "name": "ARTWORK-LICENSE.txt",
+      "sha256": "f5d14c8bdb8bc2c356764d91c4e8abd0ad7cf5091f7ee0869bc35b54957c1ff9",
+      "size": 1385
+    },
+    {
+      "name": "INSTALL.md",
+      "sha256": "9c80dfe3011199dba4007afe9fb31c4f9329c0b2d2b937b3315820cf7d2db6b5",
+      "size": 10236
+    },
+    {
+      "name": "LICENSE.txt",
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "size": 34523
+    },
+    {
+      "name": "core-manifest.json",
+      "sha256": "82a0700e7221839cf465b4b4e0b195383509fad304c3e27a3c991d416ab90017",
+      "size": 13146
+    },
+    {
+      "name": "core-manifest.sig",
+      "sha256": "1974100424d4199076ea4ae18eeb33bcc1056c9a13e18bc557bdf9e83d097d3a",
+      "size": 64
+    },
+    {
+      "name": "kagnode-core-5.0.12-icons.tar.gz",
+      "sha256": "705e7661f6495b9f206352b31579cbfbeca4380294909ecebe44df00490cd8fb",
+      "size": 103615
+    },
+    {
+      "name": "kagnode-core-5.0.12-icons.tgz",
+      "sha256": "981a7b136f501c8d2f07d37d3f9bf9be4408b576753834dec7019271502f6a01",
+      "size": 103440
+    },
+    {
+      "name": "kagnode-core-5.0.12-icons.zip",
+      "sha256": "9743d8b3f1901de1fbf98e7f52d3693f7f18d4a90bbda33b15dd9a72b7dfd129",
+      "size": 408118
+    },
+    {
+      "name": "kagnode-core-5.0.12-node.tgz",
+      "sha256": "6b143c55fbbc204f16f3258db3d3100d2cd90c25903d8d484916fe764b6685ff",
+      "size": 91938
+    },
+    {
+      "name": "kagnode-core-5.0.12-rust.tar.gz",
+      "sha256": "5d7bc62d6e9a8d093a9e1c210c262f7f2ade9f59976b01ff1dc636073d050681",
+      "size": 92869
+    },
+    {
+      "name": "kagnode-core-5.0.12-rust.tar.xz",
+      "sha256": "8664c7ce6bc07a183d12f091f847e3be7ce68f020c64ae861152d3adc7b6f8b2",
+      "size": 77860
+    },
+    {
+      "name": "kagnode-core-5.0.12-rust.zip",
+      "sha256": "748374dfbd4d8c6db0a264abf6c732a130d69fe25b4b7def00fad039d937f420",
+      "size": 93517
+    },
+    {
+      "name": "kagnode-core-5.0.12-source.tar.gz",
+      "sha256": "9486423487fe337c2f3d4ee569b69bc22f7a45c31d9d1413677666bf69d4903d",
+      "size": 375664
+    },
+    {
+      "name": "kagnode-core-5.0.12-source.tar.xz",
+      "sha256": "2760bedb1db36cf1ea1c220d8eab14d283ebc1502bf359c08b993b9fe708d7db",
+      "size": 285236
+    },
+    {
+      "name": "kagnode-core-5.0.12-source.zip",
+      "sha256": "1adbd7b7c05b26160f4fb9eca95ff6144ef3f28db67084e48f8fed912cfff844",
+      "size": 427446
+    },
+    {
+      "name": "kagnode-core-5.0.12-ui.tar.gz",
+      "sha256": "de7f1dda01fa2b86b23cae216bb001b04e15c06523d7bc93646e6ae9325cc163",
+      "size": 43627
+    },
+    {
+      "name": "kagnode-core-5.0.12-ui.tar.xz",
+      "sha256": "f29ae34e40859c993e5b3fd9037e764922ab2fb58cd6e48f4ea2a6a80a4bbe39",
+      "size": 39472
+    },
+    {
+      "name": "kagnode-core-5.0.12-ui.zip",
+      "sha256": "ed05bcd33bab22c8eae1038a1d37d7e210a8a7fc0d6a342f1659f89659edb71c",
+      "size": 44655
+    },
+    {
+      "name": "kagnode_core-5.0.12-py3-none-any.whl",
+      "sha256": "fd09607f6ab3ef009a8d9233f14a764cf12e17ed5d95d268a43d35c9851c8780",
+      "size": 102115
+    }
+  ]
+}

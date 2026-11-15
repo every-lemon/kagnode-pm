@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "kagnode-core"
-version = "5.0.10"
+version = "5.0.12"
 dependencies = [
  "base64 0.22.1",
  "serde_json",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "kagnode-proxy-manager"
-version = "5.0.2"
+version = "5.0.3"
 dependencies = [
  "anyhow",
  "argon2",

@@ -528,3 +528,55 @@ async fn quick_search_excludes_inaccessible_servers_and_removed_resources() {
     .await;
     assert!(all.to_string().contains("private-site"));
 }
+
+#[tokio::test]
+async fn upstream_probe_enforces_permission_csrf_and_current_revision() {
+    let (_dir, app, token, csrf) = fixture();
+    app.store.db.lock().unwrap().execute("INSERT INTO servers(id,name,capabilities)VALUES('node','Node','{\"upstream_probe\":true}')",[]).unwrap();
+    let owner: String = app
+        .store
+        .db
+        .lock()
+        .unwrap()
+        .query_row("SELECT id FROM users", [], |r| r.get(0))
+        .unwrap();
+    let resource=serde_json::from_value(json!({"kind":"proxy_host","settings":{"domains":["test.example.com"],"upstreams":[{"address":"http://127.0.0.1:8080"}]}})).unwrap();
+    let id = app
+        .store
+        .save_resource(&owner, "node", "app", &resource, None, 0)
+        .unwrap();
+    let path = format!("/api/v1/resources/{id}/reachability");
+    let input = json!({"revision":1,"request_key":"probe-api-fixture-0001"});
+    assert_eq!(
+        call(&app, "POST", &path, &token, "", input.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&app, "POST", &path, &token, &csrf, input.clone())
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let viewer = proxy::auth::create_user(
+        &app.store,
+        "viewer@example.test",
+        "Viewer",
+        "Another isolated fixture password",
+        Role::Viewer,
+    )
+    .unwrap();
+    let (vtoken, vsession) = proxy::auth::new_session(&app.store, &viewer).unwrap();
+    assert_ne!(
+        call(
+            &app,
+            "POST",
+            &path,
+            &vtoken,
+            &vsession.csrf,
+            json!({"revision":1,"request_key":"probe-viewer-fixture"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}

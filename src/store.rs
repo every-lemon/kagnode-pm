@@ -305,6 +305,53 @@ impl Store {
         let rows=q.query_map([id],|r|Ok(json!({"revision":r.get::<_,i64>(0)?,"settings":serde_json::from_str::<Value>(&r.get::<_,String>(1)?).unwrap_or(Value::Null),"created":r.get::<_,i64>(2)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(json!(rows))
     }
+    pub fn queue_upstream_probe(
+        &self,
+        actor: &str,
+        server: &str,
+        resource: &str,
+        revision: i64,
+        request_key: &str,
+    ) -> Result<String> {
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction()?;
+        let caps: String = tx.query_row(
+            "SELECT capabilities FROM servers WHERE id=? AND revoked=0",
+            [server],
+            |r| r.get(0),
+        )?;
+        ensure!(
+            serde_json::from_str::<Value>(&caps)?["upstream_probe"] == true,
+            "This node requires an agent update before reachability checks"
+        );
+        let (raw, actual): (String, i64) = tx.query_row(
+            "SELECT settings,revision FROM resources WHERE id=? AND server=? AND deleted=0",
+            params![resource, server],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        ensure!(
+            actual == revision,
+            "conflict: route changed; reload before checking upstreams"
+        );
+        let settings: Resource = serde_json::from_str(&raw)?;
+        crate::probe::targets(&settings)?;
+        let payload = json!({"resource_id":resource,"revision":revision,"resource":settings});
+        let existing: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM jobs WHERE request_key=?)",
+            [request_key],
+            |r| r.get(0),
+        )?;
+        if !existing {
+            let recent: i64 = tx.query_row("SELECT count(*) FROM jobs WHERE actor=? AND server=? AND kind='probe_upstreams' AND created>?", params![actor,server,crate::now()-60], |r|r.get(0))?;
+            ensure!(
+                recent < 6,
+                "Wait before requesting more reachability checks"
+            );
+        }
+        let id = Self::enqueue_tx(&tx, actor, server, "probe_upstreams", payload, request_key)?;
+        tx.commit()?;
+        Ok(id)
+    }
     pub fn enqueue(
         &self,
         actor: &str,

@@ -46,6 +46,7 @@ export function createProxyUI(env) {
     refresh,
     table,
     getServer,
+    getServers,
     canWrite,
   } = env;
   function toggle(form, label, name, checked) {
@@ -332,7 +333,11 @@ export function createProxyUI(env) {
       true,
     );
     const footer = el("div", undefined, "pm-editor-footer wide"),
-      cancel = button("Cancel", () => m.dialog.close()),
+      cancel = button("Cancel", () =>
+        window.KagNodeDialogs?.dismiss
+          ? window.KagNodeDialogs.dismiss(m.dialog)
+          : m.dialog.close(),
+      ),
       save = el("button", "Save draft", "button primary");
     save.type = "submit";
     footer.append(cancel, save);
@@ -611,6 +616,62 @@ export function createProxyUI(env) {
     notice("Route restored as an unpublished draft.");
     refresh();
   }
+  async function reachability(row) {
+    const server = getServer();
+    const m = modal("Upstream reachability · " + row.name);
+    m.body.append(
+      el(
+        "p",
+        "Checking TCP connections from this node. This does not verify application health.",
+        "muted",
+      ),
+    );
+    const receipt = await post("/resources/" + row.id + "/reachability", {
+      revision: row.revision,
+      request_key: crypto.randomUUID(),
+    });
+    for (
+      let attempt = 0;
+      attempt < 60 && m.dialog.isConnected && m.dialog.open;
+      attempt++
+    ) {
+      const jobs = await api("/servers/" + server + "/jobs");
+      const job = jobs.find((j) => j.id === receipt.job);
+      if (
+        job &&
+        ["completed", "failed", "cancelled", "uncertain"].includes(job.state)
+      ) {
+        if (job.state !== "completed")
+          throw Error(
+            "The reachability check did not complete. See Recent operations for its recorded result.",
+          );
+        const result = job.result?.result;
+        if (!Array.isArray(result?.results))
+          throw Error("The node returned an unsupported check result.");
+        m.body.append(
+          table(
+            ["Host", "Port", "TCP connection", "Elapsed"],
+            result.results.map((peer) => [
+              peer.host,
+              peer.port,
+              peer.state,
+              peer.elapsed_ms + " ms",
+            ]),
+          ),
+        );
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    if (m.dialog.isConnected && m.dialog.open)
+      m.body.append(
+        el(
+          "p",
+          "Still queued or running. Its result remains available in Recent operations.",
+          "muted",
+        ),
+      );
+  }
   function list(rows) {
     const box = el("section", undefined, "pm-route-list"),
       filters = el("div", undefined, "filter-row"),
@@ -699,6 +760,10 @@ export function createProxyUI(env) {
                 actions.append(
                   button("Edit", () => edit(r)),
                   button("Retire", () => retire(r)),
+                  ...(getServers().find((s) => s.id === server)?.capabilities
+                    ?.upstream_probe
+                    ? [button("Check reachability", () => reachability(r))]
+                    : []),
                 );
             }
             actions.append(button("History", () => history(r)));

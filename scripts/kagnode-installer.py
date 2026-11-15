@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Typed KagNode CLI installer entry point; no guessed provisioning commands."""
+"""Typed KagNode Daemon installer entry point; no guessed provisioning commands."""
 
 import argparse
 import json

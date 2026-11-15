@@ -146,13 +146,37 @@
     const folders = all("[data-core-nav-folder]", sidebar);
     if (!container || !folders.length) return;
     sidebar.dataset.coreFoldersReady = "true";
-    let opener;
+    let opener,
+      current = container,
+      motion;
+    const positions = new WeakMap();
     function show(name, focus = false) {
       const folder = folders.find((el) => el.dataset.coreNavFolder === name);
+      const next = folder || container;
+      const scroller = container.closest(".kn-core-sidebar-navigation");
+      positions.set(current, scroller?.scrollTop || 0);
+      motion?.cancel();
       container.hidden = !!folder;
       folders.forEach((el) => {
         el.hidden = el !== folder;
       });
+      if (scroller) scroller.scrollTop = positions.get(next) || 0;
+      if (
+        focus &&
+        next !== current &&
+        next.animate &&
+        !matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        const direction = folder ? 1 : -1;
+        motion = next.animate(
+          [
+            { opacity: 0, transform: `translateX(${direction * 24}px)` },
+            { opacity: 1, transform: "translateX(0)" },
+          ],
+          { duration: 220, easing: "cubic-bezier(.2,.7,.2,1)" },
+        );
+      }
+      current = next;
       all("[data-core-nav-open]", sidebar).forEach((button) => {
         button.setAttribute(
           "aria-expanded",
@@ -604,6 +628,21 @@
       b.setAttribute("aria-label", "Open account menu");
       b.setAttribute("aria-haspopup", "true");
     });
+    if (sidebar) {
+      for (const button of all("[data-command]", sidebar)) {
+        button.setAttribute("aria-label", "Quick search");
+        button.dataset.coreTooltip = "Quick search";
+      }
+      for (const disclosure of all(
+        "summary .chevron, [data-disclosure-icon]",
+        sidebar,
+      )) {
+        const svg = disclosure.matches("svg")
+          ? disclosure
+          : disclosure.querySelector("svg");
+        if (svg) svg.innerHTML = window.KagNodeIcons.chevron;
+      }
+    }
     if (sidebar)
       for (const link of all(
         ".kn-core-sidebar-navigation a,.kn-core-sidebar-navigation summary",

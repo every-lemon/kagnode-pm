@@ -11,6 +11,7 @@ pub mod mfa;
 pub mod migration;
 pub mod oauth;
 pub mod packages;
+pub mod probe;
 pub mod store;
 pub mod tls;
 pub mod traffic;

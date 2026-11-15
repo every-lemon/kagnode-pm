@@ -2,13 +2,13 @@
   "schema": 1,
   "application": "proxy-manager",
   "repository": "every-lemon/kagnode-core",
-  "baseline": "5.0.10",
-  "adapter": "5.0.10",
+  "baseline": "5.0.12",
+  "adapter": "5.0.12",
   "ui_api": 1,
   "patch_range": "5.0.x",
   "automatic_ui_patches": true,
   "backend_updates": "reviewed",
-  "fallback_manifest_sha256": "6ffc01f0178b3aefabeea0edce3f8c5298f71d6042a812db146188361880e121",
-  "source_commit": "efc8e25179932d85e7f9a5edc779a5b27534a919",
-  "signed_ui_manifest_sha256": "31de3a739850949b52792a908d35ff20bcf8e36c8be21499edcb6015779a9c87"
+  "fallback_manifest_sha256": "18fc0230ad28573a3a37d9e80702df3a3ed3ff21eeb3f789fd34413a92a1aa03",
+  "source_commit": "a013c70e7adc6c8718c684ec7a1276e2453cf3a7",
+  "signed_ui_manifest_sha256": "82a0700e7221839cf465b4b4e0b195383509fad304c3e27a3c991d416ab90017"
 }
