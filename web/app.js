@@ -917,7 +917,7 @@ import { createProxyUI } from "./proxies.js";
       return;
     }
     panel.append(
-      el("p", "KagNode. PM · " + (status.installed || session.version)),
+      el("p", "KagNode. Proxy · " + (status.installed || session.version)),
       el(
         "p",
         status.message ||
@@ -1286,7 +1286,7 @@ import { createProxyUI } from "./proxies.js";
           button("Review activation", () =>
             confirmAction(
               "Activate uploaded certificate?",
-              "PM checks active site hostname coverage, validates the traffic configuration and reloads it. The existing key pair is retained for rollback.",
+              "KagNode. Proxy checks active site hostname coverage, validates the traffic configuration and reloads it. The existing key pair is retained for rollback.",
               async () => {
                 await post("/servers/" + selected + "/certificates/activate", {
                   id: cert.id,
@@ -1500,7 +1500,7 @@ import { createProxyUI } from "./proxies.js";
       () =>
         confirmAction(
           "Import reviewed sites?",
-          "PM will inspect the source again. Existing traffic remains unchanged; imported sites require a separate reviewed activation.",
+          "KagNode. Proxy will inspect the source again. Existing traffic remains unchanged; imported sites require a separate reviewed activation.",
           async () => {
             await post("/servers/" + selected + "/adoptions", {
               fingerprint: report.fingerprint,
