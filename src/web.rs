@@ -273,7 +273,7 @@ pub fn shell(title: &str, u: Option<&User>, content: &str) -> String {
                 (
                     "brand",
                     &format!(
-                        "<a class=\"brand\" href=\"/\"><img src=\"{mark}\" alt=\"\" width=\"28\"><span class=\"brand-copy\"><strong>KagNode.</strong><small>PM</small></span></a>"
+                        "<a class=\"brand\" href=\"/\"><img src=\"{mark}\" alt=\"\" width=\"28\"><span class=\"brand-copy\"><strong>KagNode.</strong><small>Proxy</small></span></a>"
                     ),
                 ),
                 (
@@ -325,7 +325,7 @@ pub fn shell(title: &str, u: Option<&User>, content: &str) -> String {
         .replace('<', "\\u003c");
     if u.is_none() {
         return format!(
-            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>{} · KagNode. PM</title>{}<link rel=\"stylesheet\" href=\"/assets/{host_css}\"><link rel=\"icon\" href=\"{mark}\" type=\"image/svg+xml\"></head><body class=\"identity-screen\">{content}</body></html>",
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>{} · KagNode. Proxy</title>{}<link rel=\"stylesheet\" href=\"/assets/{host_css}\"><link rel=\"icon\" href=\"{mark}\" type=\"image/svg+xml\"></head><body class=\"identity-screen\">{content}</body></html>",
             esc(title),
             crate::core::context(false, ""),
             host_css = crate::generated_assets::CSS_NAME
@@ -334,7 +334,7 @@ pub fn shell(title: &str, u: Option<&User>, content: &str) -> String {
     let css = crate::generated_assets::CSS_NAME;
     let js = crate::generated_assets::JS_NAME;
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>{} · KagNode. PM</title>{}<link rel=\"icon\" href=\"{mark}\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/{css}\"><script defer src=\"/assets/{js}\"></script></head><body class=\"{}\">{sidebar}{search_source}<div class=\"workspace\"><header class=\"topbar\"><div><span class=\"eyebrow\">KAGNODE PM</span><span>{}</span></div>{account}</header><main id=\"main\" tabindex=\"-1\">{content}</main><footer>Self-hosted. Your servers, your control. <a href=\"https://github.com/every-lemon/kagnode-pm\">Source</a></footer></div><script type=\"application/json\" id=\"session-data\">{bootstrap}</script></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>{} · KagNode. Proxy</title>{}<link rel=\"icon\" href=\"{mark}\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/{css}\"><script defer src=\"/assets/{js}\"></script></head><body class=\"{}\">{sidebar}{search_source}<div class=\"workspace\"><header class=\"topbar\"><div><span class=\"eyebrow\">KAGNODE PROXY</span><span>{}</span></div>{account}</header><main id=\"main\" tabindex=\"-1\">{content}</main><footer>Self-hosted. Your servers, your control. <a href=\"https://github.com/every-lemon/kagnode-pm\">Source</a></footer></div><script type=\"application/json\" id=\"session-data\">{bootstrap}</script></body></html>",
         esc(title),
         crate::core::context(u.is_some(), u.map_or("", |u| &u.id)),
         if u.is_some() { "" } else { "identity-screen" },
@@ -409,7 +409,7 @@ fn render_login(s: &App, error: Option<(&str, &str)>) -> Response {
     let content = crate::core::template(
         "login-frame",
         &[
-            ("product", "KagNode. PM"),
+            ("product", "KagNode. Proxy"),
             ("heading", "Sign in"),
             ("description", "Manage your proxy servers."),
         ],
@@ -1292,7 +1292,7 @@ async fn mfa_page(State(_s): State<App>, h: HeaderMap) -> Api<Response> {
     let content = crate::core::template(
         "login-frame",
         &[
-            ("product", "KagNode. PM"),
+            ("product", "KagNode. Proxy"),
             ("heading", "Verify it’s you"),
             (
                 "description",

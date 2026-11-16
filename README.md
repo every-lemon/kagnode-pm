@@ -1,6 +1,8 @@
 <p align="center"><img src="vendor/core/mark.svg" width="64" alt="KagNode."></p>
 
-# KagNode. PM
+# KagNode. Proxy
+
+_Formerly KagNode. PM. The repository (`kagnode-pm`), package, command (`kagnode-pm`), installed paths, API paths and published releases keep their original identifiers._
 
 ## Overview
 
@@ -28,7 +30,7 @@ Screenshots come from an isolated test controller with one fictional, offline se
 
 ## Release status
 
-**Version 5.0.2: PM editing, publication review and production-certificate repairs.** Ubuntu 24.04 amd64 is the native deployment target; see the dated validation notes. Broader native-platform, forward-engine and external certificate-provider qualification remains pending; a general stable package release has not been published.
+**Version 5.0.2: Proxy editing, publication review and production-certificate repairs.** Ubuntu 24.04 amd64 is the native deployment target; see the dated validation notes. Broader native-platform, forward-engine and external certificate-provider qualification remains pending; a general stable package release has not been published.
 
 The repository distinguishes implemented functions from verification still required in [the delivery checklist](docs/DELIVERY.md). Do not replace a working proxy using an unqualified development build. All KagNode release versions remain on the 5.0.x line.
 

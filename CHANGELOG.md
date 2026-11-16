@@ -1,3 +1,7 @@
+## Unreleased
+
+- Rename the visible product name from KagNode. PM to KagNode. Proxy in the interface, login, page titles, documentation and artwork text. The repository, package, `kagnode-pm` command, installed paths, API paths, signed manifests and published releases keep their identifiers.
+
 ## 5.0.3
 
 - Adopt Core form dialogs with one close control and guarded Cancel behavior.

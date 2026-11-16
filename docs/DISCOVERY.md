@@ -1,6 +1,6 @@
 # Configuration discovery and adoption
 
-KagNode. PM discovers Nginx, Caddy, Apache HTTP Server, HAProxy and Traefik configuration through the authenticated server agent. Installation includes a read-only inventory; the Discovery page lets an administrator request another scan. Scanning does not execute configuration, contact certificate authorities, change listeners or stop existing services.
+KagNode. Proxy discovers Nginx, Caddy, Apache HTTP Server, HAProxy and Traefik configuration through the authenticated server agent. Installation includes a read-only inventory; the Discovery page lets an administrator request another scan. Scanning does not execute configuration, contact certificate authorities, change listeners or stop existing services.
 
 The report contains source locations, checksums, parsed site settings, known directive names, active services, listening ports and container candidates. Raw source, private keys, credential directives and environment variables are not returned. Includes, security inheritance, custom listeners, unsupported routing and incomplete inventories block automatic adoption rather than disappearing during conversion. HAProxy ACL conversion and complex multi-file/container adoption currently require manual review; inventory support is not a claim that arbitrary configurations can be converted safely.
 
