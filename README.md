@@ -8,6 +8,26 @@ _Formerly KagNode. PM. The repository (`kagnode-pm`), package, command (`kagnode
 
 A new Rust application for managing reverse proxies, authenticated forward proxies and server maintenance across a fleet. The controller and agents manage configuration; Nginx and optional 3proxy handle traffic.
 
+### What it looks like
+
+Screenshots come from an isolated test controller with one fictional, offline server. Nothing was applied to a real proxy, certificate or host.
+
+| Overview                                                                                             | Reverse proxies                                                                            |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| ![The overview with counts of servers and draft changes and a server list](docs/images/overview.png) | ![The reverse-proxy routes page for the fictional server](docs/images/reverse-proxies.png) |
+| ![The certificates page](docs/images/certificates.png)                                               | ![The overview on a phone](docs/images/overview-mobile.png)                                |
+
+### How it works
+
+1. **One controller, many servers.** You run the controller once. Each server you enroll runs an agent that connects with a mutual-TLS identity; you can revoke it at any time.
+2. **You edit typed configuration.** Reverse hosts, upstreams (with weights), TCP/UDP streams and authenticated forward proxies are structured forms, not free text. Every change carries a revision, so two people cannot silently overwrite each other.
+3. **Review, then publish.** A publication is a reviewed snapshot. Its result is shown after it runs, and a conflicting or duplicate change cannot replace what was reviewed.
+4. **Agents do the work; Nginx carries the traffic.** The controller and agents manage configuration; Nginx (and optionally 3proxy) handles the traffic. Jobs are durable, so a restart does not lose them.
+5. **Bring what you already have.** Read-only discovery finds existing Nginx, Caddy, Apache, HAProxy and Traefik setups so you can review and import them as drafts.
+6. **Certificates.** You choose the ACME authority and validation method, or upload a certificate, which is queued and encrypted.
+7. **Accounts and audit.** Local accounts support MFA and recovery codes, with per-node permissions and an audit record of changes.
+8. **Qualification matters.** Listing a feature here does not mean its native runtime is qualified. Check the delivery checklist before replacing a working proxy.
+
 ## Release status
 
 **Version 5.0.2: Proxy editing, publication review and production-certificate repairs.** Ubuntu 24.04 amd64 is the native deployment target; see the dated validation notes. Broader native-platform, forward-engine and external certificate-provider qualification remains pending; a general stable package release has not been published.
