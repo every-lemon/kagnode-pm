@@ -16,7 +16,7 @@ Certificate authority and domain validation are independent selections. Let's En
 }
 ```
 
-The staging addresses above are examples, not functioning provider endpoints. PM refuses staging issuance when no staging directory is configured; it never silently switches to production. External account binding uses a private `traffic/credentials/<id>.eab.ini` containing exactly `eab-kid` and `eab-hmac-key`. Secrets stay out of process arguments. HTTP, Cloudflare DNS and RFC 2136 DNS remain the existing structured validation methods. Credentials are local root-owned files. Actual issuance depends on the installed Certbot/plugin build, provider account and DNS access; a configuration test does not establish issuance readiness.
+The staging addresses above are examples, not functioning provider endpoints. KagNode. Proxy refuses staging issuance when no staging directory is configured; it never silently switches to production. External account binding uses a private `traffic/credentials/<id>.eab.ini` containing exactly `eab-kid` and `eab-hmac-key`. Secrets stay out of process arguments. HTTP, Cloudflare DNS and RFC 2136 DNS remain the existing structured validation methods. Credentials are local root-owned files. Actual issuance depends on the installed Certbot/plugin build, provider account and DNS access; a configuration test does not establish issuance readiness.
 
 ## Upload
 
@@ -37,4 +37,4 @@ No private-key read/download endpoint is exposed.
 
 ## Staging-to-production promotion
 
-A staging test uses an untrusted test certificate. When a Let's Encrypt lineage was created against staging, a production request explicitly replaces it rather than reusing Certbot's still-valid staging result. Public-authority production certificates must chain to the system CA store and cover every requested hostname before PM selects them. A normal production lineage is not force-renewed on every request. Certificate selection still requires a reviewed route publication to change live traffic.
+A staging test uses an untrusted test certificate. When a Let's Encrypt lineage was created against staging, a production request explicitly replaces it rather than reusing Certbot's still-valid staging result. Public-authority production certificates must chain to the system CA store and cover every requested hostname before KagNode. Proxy selects them. A normal production lineage is not force-renewed on every request. Certificate selection still requires a reviewed route publication to change live traffic.

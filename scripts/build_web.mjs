@@ -19,7 +19,7 @@ for (const extension of ["js", "css"]) {
       legalComments: "inline",
       target: ["es2022"],
       banner:
-        "/* KagNode. PM · AGPL-3.0-only · github.com/every-lemon/kagnode-pm */",
+        "/* KagNode. Proxy · AGPL-3.0-only · github.com/every-lemon/kagnode-pm */",
     },
   );
   if (extension === "js") {
@@ -33,7 +33,7 @@ for (const extension of ["js", "css"]) {
       legalComments: "inline",
       target: ["es2022"],
       banner: {
-        js: "/* KagNode. PM · AGPL-3.0-only · github.com/every-lemon/kagnode-pm */",
+        js: "/* KagNode. Proxy · AGPL-3.0-only · github.com/every-lemon/kagnode-pm */",
       },
     });
     result.code = bundled.outputFiles[0].text;
