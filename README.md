@@ -2,7 +2,7 @@
 
 # KagNode. Proxy
 
-_Formerly KagNode. PM. The repository (`kagnode-pm`), package, command (`kagnode-pm`), installed paths, API paths and published releases keep their original identifiers._
+_Formerly KagNode. PM. The repository is now [`every-lemon/kagnode-proxy`](https://github.com/every-lemon/kagnode-proxy). Package names, the `kagnode-pm` command, installed paths, API paths, update identifiers and published release assets keep their original identifiers._
 
 ## Overview
 
@@ -30,7 +30,7 @@ Screenshots come from an isolated test controller with one fictional, offline se
 
 ## Release status
 
-**Version 5.0.2: Proxy editing, publication review and production-certificate repairs.** Ubuntu 24.04 amd64 is the native deployment target; see the dated validation notes. Broader native-platform, forward-engine and external certificate-provider qualification remains pending; a general stable package release has not been published.
+**Source version 5.0.4: visible KagNode. Proxy branding.** This patch is in release preparation; it is not published or deployed by this source change. The latest published native application is 5.0.3, with 13 release assets. Use the [latest published release](https://github.com/every-lemon/kagnode-proxy/releases/latest) for downloads and its exact checksums and qualification notes. Ubuntu 24.04 amd64 is the recorded native deployment target; broader native-platform, forward-engine and external certificate-provider qualification remains pending.
 
 The repository distinguishes implemented functions from verification still required in [the delivery checklist](docs/DELIVERY.md). Do not replace a working proxy using an unqualified development build. All KagNode release versions remain on the 5.0.x line.
 
